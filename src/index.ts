@@ -53,6 +53,11 @@ export default {
   },
 
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+    // DEBUG: confirm the env bindings are actually available
+    console.log(
+      `[DEBUG ENV] BOT_TOKEN=${env.BOT_TOKEN ? "set" : "MISSING"} TWELVE_DATA_API_KEY=${env.TWELVE_DATA_API_KEY ? "set" : "MISSING"} SIGNAL_CHANNEL_ID=${env.SIGNAL_CHANNEL_ID ? "set" : "MISSING"}`
+    );
+
     for (const symbol of MAIN_SYMBOLS) {
       try {
         const signal = await analyzeSymbol(env.TWELVE_DATA_API_KEY, symbol);
