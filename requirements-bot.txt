@@ -1,0 +1,2 @@
+# Only for your OWN trading bot on a Windows PC (the scanner does not need this):
+MetaTrader5
