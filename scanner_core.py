@@ -57,7 +57,7 @@ class Scanner:
             self.htf_cache[(sym, htf)] = hit
         return hit[1]
 
-    def scan(self, now: datetime, r: Rules) -> list[dict]:
+    def scan(self, now: datetime, r: Rules, unapproved: bool = False) -> list[dict]:
         out: list[dict] = []
         if now.weekday() >= 5 or not (r.scan_start_utc <= now.hour < r.scan_end_utc):
             return out
@@ -66,7 +66,7 @@ class Scanner:
             if sym in r.pairs_off:
                 continue
             for tf, (htf, valid, hold) in TIMEFRAMES.items():
-                names = [n for n in SIGNAL_FUNCS if self.ratings.get((sym, tf, n), {}).get("ok")]
+                names = [n for n in SIGNAL_FUNCS if unapproved or self.ratings.get((sym, tf, n), {}).get("ok")]
                 last = self.last_bar.get((sym, tf))
                 if not names or (last is not None and ts < last + pd.Timedelta(minutes=2 * TF_MIN[tf])):
                     continue                                    # nothing approved, or the next candle has not closed yet
@@ -92,14 +92,14 @@ class Scanner:
                         if key in self.last_sent and df.index[-1] - self.last_sent[key] < pd.Timedelta(minutes=r.cooldown_bars * TF_MIN[tf]):
                             continue
                         self.last_sent[key] = df.index[-1]
-                        rt = self.ratings[(sym, tf, name)]
+                        rt = self.ratings.get((sym, tf, name), NOT_ENOUGH_DATA)
                         e = s.entry
                         out.append({"symbol": sym, "side": side, "timeframe": tf, "htf": htf, "strategy": name,
                                     "entry": _round(e, e), "sl": _round(s.sl, e), "tp1": _round(s.tp1, e), "tp2": _round(s.tp2, e),
                                     "atr": _round(s.atr, e), "bar_time": df.index[-1].isoformat(),
                                     "expires_at": (bar_close + pd.Timedelta(minutes=valid * TF_MIN[tf])).isoformat(),
                                     "max_hold_min": hold * TF_MIN[tf], "win_rate": round(rt["win_rate"], 4),
-                                    "pf": round(rt["pf"], 3), "bt_trades": rt["n"]})
+                                    "pf": round(rt["pf"], 3), "bt_trades": rt["n"], "approved": bool(rt["ok"])})
                 except Exception as ex:
                     log.warning("%s %s: %s", sym, tf, ex)
         return out

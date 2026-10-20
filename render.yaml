@@ -1,0 +1,17 @@
+# Optional: lets Render set the scanner up for you (Render dashboard: New > Blueprint).
+services:
+  - type: worker
+    name: fx-scanner
+    runtime: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: python worker.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: FEED
+        value: yahoo
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false

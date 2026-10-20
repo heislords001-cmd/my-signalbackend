@@ -1,4 +1,34 @@
-# FX Desk scanner (backend, runs on your VPS: Windows or Linux)
+# FX Desk scanner (backend)
+
+The scanner watches the market all day, Monday to Friday, and sends signals. It only reads prices and never trades.
+Pick ONE place to run it:
+
+## A. Railway (recommended: no server to manage)
+1. Put these files in a new PRIVATE GitHub repository (on github.com: New repository, then "uploading an existing file", then drag in everything from this folder).
+2. railway.com: sign in with GitHub, New Project, Deploy from GitHub repo, pick that repository.
+3. Open the service's Variables tab and add:
+   - `SUPABASE_URL` = your Supabase Project URL
+   - `SUPABASE_SERVICE_KEY` = the service_role key (secret: only ever type it into Railway, never into the website or GitHub)
+   - `FEED` = `yahoo`
+   - optional: `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` (run `python telegram_setup.py` on your PC to find them)
+4. It deploys and starts by itself (`railway.json` already says how). Open the Logs tab. You should see "Scanner started in ONLINE (Supabase) mode".
+5. On your website, Home, press Start scanner.
+Cost: Railway's docs list a one-time $5 trial credit, then a free plan with $1 of credit a month, then Hobby at $5 a month. An always-on scanner needs roughly the Hobby plan. A card may be required.
+
+## A2. Render (works too, costs a little more)
+1. Same private GitHub repository as above.
+2. render.com: New, then **Background Worker** (NOT Web Service, which expects a website and sleeps when idle).
+3. Pick the repository. Runtime Python. Build command `pip install -r requirements.txt`. Start command `python worker.py`. Instance type **Starter** (about $7 a month; the Free type sleeps and cannot keep a scanner running).
+4. Environment variables: the same three as Railway (`SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `FEED=yahoo`).
+5. Create, then watch the Logs. Or use New > Blueprint, which reads `render.yaml` and asks you for the two secret values.
+
+## B. Your own PC, no website (LOCAL mode)
+Leave SUPABASE_URL empty. Run `pip install -r requirements.txt`, then `python telegram_setup.py`, then double-click `start-scanner.bat`. Signals go to Telegram and to the `data` folder (`signals.csv` opens in Excel). The PC must stay on.
+
+## C. A Windows or Linux server
+See the steps further down.
+
+---
 
 Do this AFTER the database (supabase-setup.sql) and the website are set up.
 
