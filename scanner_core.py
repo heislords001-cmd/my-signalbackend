@@ -13,8 +13,14 @@ from strategies import NAMES, SIGNAL_FUNCS, TF_MIN, TIMEFRAMES, htf_trend
 
 log = logging.getLogger("scanner")
 HIST = {"M5": 40000, "M15": 20000, "H1": 10000, "H4": 3000, "D1": 1000}   # candles used for backtests
-NOT_ENOUGH_DATA = {"n": 0, "win_rate": 0.0, "pf": 0.0, "expectancy": 0.0, "max_dd": 0.0, "test_pf": 0.0, "test_n": 0, "ok": False}
+NOT_ENOUGH_DATA = {"n": 0, "win_rate": 0.0, "pf": 0.0, "expectancy": 0.0, "max_dd": 0.0, "test_pf": 0.0, "test_n": 0, "ok": False, "grade": None}
 LIVE = 1500                                                              # candles used to look for a live signal
+
+
+def fresh(rows: list[dict], hours: float = 26) -> bool:
+    """True when the saved strategy results are recent enough to trust without testing again."""
+    cutoff = pd.Timestamp.now(tz="UTC") - pd.Timedelta(hours=hours)
+    return bool(rows) and all(pd.Timestamp(r["updated_at"]) > cutoff for r in rows)
 
 
 def _round(x: float, ref: float) -> float:
@@ -28,6 +34,19 @@ class Scanner:
         self.last_bar: dict[tuple, pd.Timestamp] = {}
         self.last_sent: dict[tuple, pd.Timestamp] = {}
         self.htf_cache: dict[tuple, tuple[datetime, pd.DataFrame]] = {}
+
+    def load_ratings(self, rows: list[dict]) -> None:
+        for x in rows:
+            self.ratings[(x["symbol"], x["timeframe"], x["strategy"])] = {
+                "ok": bool(x["enabled"]), "n": x.get("trades") or 0, "win_rate": float(x.get("win_rate") or 0), "pf": float(x.get("pf") or 0),
+                "expectancy": float(x.get("expectancy") or 0), "max_dd": float(x.get("max_dd") or 0), "test_pf": float(x.get("test_pf") or 0),
+                "test_n": x.get("test_n") or 0, "grade": None}
+
+    def seed_cooldown(self, rows: list[dict]) -> None:
+        for x in rows:
+            key, ts = (x["symbol"], x["side"], x["timeframe"], x["strategy"]), pd.Timestamp(x["bar_time"])
+            if key not in self.last_sent or ts > self.last_sent[key]:
+                self.last_sent[key] = ts
 
     # ---- daily: which strategies deserve to send signals ---------------------
     def rate_all(self, r: Rules) -> list[dict]:
@@ -57,7 +76,7 @@ class Scanner:
             self.htf_cache[(sym, htf)] = hit
         return hit[1]
 
-    def scan(self, now: datetime, r: Rules, unapproved: bool = False) -> list[dict]:
+    def scan(self, now: datetime, r: Rules, unapproved: bool = False, gate_clock: bool = False) -> list[dict]:
         out: list[dict] = []
         if now.weekday() >= 5 or not (r.scan_start_utc <= now.hour < r.scan_end_utc):
             return out
@@ -66,6 +85,8 @@ class Scanner:
             if sym in r.pairs_off:
                 continue
             for tf, (htf, valid, hold) in TIMEFRAMES.items():
+                if gate_clock and (now.hour * 60 + now.minute) % TF_MIN[tf] >= 3:
+                    continue                                    # cron mode: only look in the 3 minutes after a candle closes
                 names = [n for n in SIGNAL_FUNCS if unapproved or self.ratings.get((sym, tf, n), {}).get("ok")]
                 last = self.last_bar.get((sym, tf))
                 if not names or (last is not None and ts < last + pd.Timedelta(minutes=2 * TF_MIN[tf])):

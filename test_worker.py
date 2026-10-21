@@ -20,7 +20,7 @@ import strategies as S
 
 SIG = {"symbol": "EURUSD", "side": "buy", "timeframe": "M5", "htf": "H1", "strategy": "trend_pullback", "entry": 1.1, "sl": 1.098, "tp1": 1.103,
        "tp2": 1.106, "bar_time": "2026-03-10T12:00:00+00:00", "expires_at": "2026-03-10T12:20:00+00:00", "max_hold_min": 240,
-       "win_rate": 0.6, "pf": 1.5, "bt_trades": 40, "approved": True}
+       "win_rate": 0.6, "pf": 1.5, "bt_trades": 40, "approved": True, "grade": "A"}
 
 
 def test_local_store():
@@ -40,7 +40,7 @@ def test_local_store():
 
 def test_message_and_telegram():
     m = notify.format_signal(SIG)
-    assert "BUY EURUSD" in m and "M5" in m and "Trend pullback" in m and "Stop 1.098" in m and "TP2 1.106" in m and "UNTESTED" not in m
+    assert "BUY EURUSD" in m and "M5" in m and "Trend pullback" in m and "Stop 1.098" in m and "TP2 1.106" in m and "UNTESTED" not in m and "PREMIUM grade A" in m
     assert "UNTESTED" in notify.format_signal({**SIG, "approved": False}) and "Backtest: 60% wins" in m
     for k in ("TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"):
         os.environ.pop(k, None)

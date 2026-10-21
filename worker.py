@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -14,7 +15,7 @@ import requests
 from cloud import load_env, rules_from
 from localstore import LocalStore
 from notify import format_signal, telegram
-from scanner_core import Scanner
+from scanner_core import Scanner, fresh
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
 log = logging.getLogger("worker")
@@ -47,6 +48,12 @@ class Db:
     def settings(self) -> dict:
         g = self._get("settings", "id=eq.1&select=data")
         return g[0]["data"] if g else {}
+
+    def load_stats(self) -> list[dict]:
+        return self._get("strategy_stats", "select=*")
+
+    def recent_signals(self, since_iso: str) -> list[dict]:
+        return self._get("signals", f"created_at=gte.{since_iso}&select=symbol,side,timeframe,strategy,bar_time&limit=500")
 
     def save_stats(self, rows: list[dict]) -> None:
         h = {**self.h, "Prefer": "resolution=merge-duplicates"}
@@ -82,13 +89,18 @@ def print_table(rows: list[dict]) -> None:
     print()
 
 
-def cycle(store, sc: Scanner, now: datetime, unapproved: bool, state: dict) -> int:
-    """One pass: test strategies if due, look for new signals, track how old ones ended. Returns seconds to wait."""
+def cycle(store, sc: Scanner, now: datetime, unapproved: bool, state: dict, once: bool = False) -> int:
+    """One pass: test strategies if due, look for new signals, track how old ones ended. Returns seconds to wait.
+    once=True is for cron hosts: every run is a fresh start, so it reuses the saved results instead of re-testing."""
     store.beat(now)
     if not store.running():
         return 15
     r = rules_from(store.settings())
-    if not sc.ratings or time.time() - state.get("rated", 0.0) > 86400:       # once a day: re-test every strategy on fresh history
+    if once and not sc.ratings:
+        saved = store.load_stats()
+        if fresh(saved):
+            sc.load_ratings(saved)
+    if not sc.ratings or (not once and time.time() - state.get("rated", 0.0) > 86400):      # re-test every strategy about once a day
         log.info("Testing every pair, timeframe and strategy. This takes a few minutes...")
         rows = sc.rate_all(r)
         store.save_stats(rows)
@@ -96,14 +108,17 @@ def cycle(store, sc: Scanner, now: datetime, unapproved: bool, state: dict) -> i
         log.info("Approved %d of %d combinations.", sum(x["enabled"] for x in rows), len(rows))
         if isinstance(store, LocalStore):
             print_table(rows)
-    for s in sc.scan(now, r, unapproved):
+    since = (now - timedelta(days=3)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    if once:
+        sc.seed_cooldown(store.recent_signals(since))
+    for s in sc.scan(now, r, unapproved, gate_clock=once):
         if store.new_signal(s):
             msg = format_signal(s)
             log.info("New signal:\n%s", msg)
             telegram(msg)
-    since = (now - timedelta(days=3)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    for u in sc.outcomes(store.open_signals(since), now):
-        store.update_signal(u["id"], {k: v for k, v in u.items() if k != "id"})
+    if not once or now.minute % 5 == 0:
+        for u in sc.outcomes(store.open_signals(since), now):
+            store.update_signal(u["id"], {k: v for k, v in u.items() if k != "id"})
     return r.scan_every_sec
 
 
@@ -120,6 +135,17 @@ def main() -> None:
     elif local:
         log.info("Telegram is not set up, so signals only show in this window and in the data folder.")
     state: dict = {}
+    if "--once" in sys.argv:                          # cron hosts (Render Cron Job, GitHub Actions): do one pass and exit
+        try:
+            cycle(store, sc, datetime.now(timezone.utc), unapproved, state, once=True)
+        except Exception as e:
+            log.error("run failed: %s", e)
+            try:
+                store.error(str(e))
+            except Exception:
+                pass
+            sys.exit(1)
+        return
     wait = 15
     while True:
         try:

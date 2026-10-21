@@ -1,0 +1,31 @@
+# Runs the scanner for FREE on GitHub's servers. Add your keys under Settings > Secrets and variables > Actions.
+name: scanner
+
+on:
+  schedule:
+    - cron: "*/5 12-16 * * 1-5"       # every 5 minutes, 1pm to 5pm Nigeria time, Monday to Friday (UTC clock)
+    - cron: "0 6-11,17-20 * * 1-5"    # once an hour the rest of the day, for the slower 1-hour signals
+  workflow_dispatch: {}                # the "Run workflow" button, for testing
+
+concurrency:
+  group: scanner
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python worker.py --once
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          FEED: yahoo
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}

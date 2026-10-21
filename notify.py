@@ -10,6 +10,8 @@ from strategies import NAMES
 
 def format_signal(s: dict) -> str:
     lines = [f"{s['side'].upper()} {s['symbol']} · {s['timeframe']} · {NAMES.get(s['strategy'], s['strategy'])}"]
+    if s.get("grade") == "A":
+        lines.append("PREMIUM grade A: passed the stricter test.")
     if s.get("approved") is False:
         lines.append("WARNING: UNTESTED. This strategy has not passed the backtest. Demo account only.")
     lines += [f"Entry about {s['entry']}", f"Stop {s['sl']}", f"TP1 {s['tp1']}   TP2 {s['tp2']}",

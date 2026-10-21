@@ -32,6 +32,12 @@ class LocalStore:
     def save_stats(self, rows: list[dict]) -> None:
         json.dump(rows, open(self.stats, "w"), indent=1)
 
+    def load_stats(self):
+        return json.load(open(self.stats)) if os.path.exists(self.stats) else []
+
+    def recent_signals(self, since_iso: str) -> list[dict]:
+        return [r for r in self._all() if r["created_at"] >= since_iso]
+
     def _all(self) -> list[dict]:
         if not os.path.exists(self.jsonl):
             return []
@@ -40,7 +46,7 @@ class LocalStore:
     def _write(self, rows: list[dict]) -> None:
         with open(self.jsonl, "w") as f:
             f.writelines(json.dumps(r) + "\n" for r in rows)
-        cols = ["created_at", "symbol", "side", "timeframe", "strategy", "approved", "entry", "sl", "tp1", "tp2", "expires_at", "max_hold_min", "outcome", "result_r"]
+        cols = ["created_at", "symbol", "side", "timeframe", "strategy", "grade", "approved", "entry", "sl", "tp1", "tp2", "expires_at", "max_hold_min", "outcome", "result_r"]
         with open(self.csv, "w", newline="") as f:
             w = csv.DictWriter(f, fieldnames=cols, extrasaction="ignore")
             w.writeheader()
