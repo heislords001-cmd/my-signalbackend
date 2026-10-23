@@ -59,8 +59,10 @@ class Db:
         h = {**self.h, "Prefer": "resolution=merge-duplicates"}
         requests.post(f"{self.url}/strategy_stats?on_conflict=symbol,timeframe,strategy", headers=h, json=rows, timeout=30).raise_for_status()
 
+    def save_summary(self, summary: dict) -> None:
+        self._patch("scanner_state", "id=eq.1", {**summary, "last_error": None})
+
     def new_signal(self, row: dict) -> bool:
-        row = {k: v for k, v in row.items() if k != "approved"}
         h = {**self.h, "Prefer": "resolution=ignore-duplicates,return=representation"}
         r = requests.post(f"{self.url}/signals?on_conflict=symbol,side,timeframe,strategy,bar_time", headers=h, json=row, timeout=20)
         r.raise_for_status()
@@ -108,6 +110,8 @@ def cycle(store, sc: Scanner, now: datetime, unapproved: bool, state: dict, once
         log.info("Approved %d of %d combinations.", sum(x["enabled"] for x in rows), len(rows))
         if isinstance(store, LocalStore):
             print_table(rows)
+    if hasattr(store, "save_summary"):
+        store.save_summary(sc.summary())
     since = (now - timedelta(days=3)).strftime("%Y-%m-%dT%H:%M:%SZ")
     if once:
         sc.seed_cooldown(store.recent_signals(since))
@@ -127,7 +131,7 @@ def main() -> None:
     url, key = os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_KEY")
     store = Db(url, key) if url and key else LocalStore()
     local = isinstance(store, LocalStore)
-    unapproved = local and (os.getenv("SEND_UNAPPROVED") or "yes").lower() == "yes"   # local testing: also show untested strategies, clearly flagged
+    unapproved = (os.getenv("SEND_UNAPPROVED") or "yes").lower() == "yes"   # testing month: also send untested signals, clearly marked (only you can see them on the site)
     sc = Scanner(make_feed())
     log.info("Scanner started in %s mode.", "LOCAL (files and Telegram)" if local else "ONLINE (Supabase)")
     if telegram("FX Desk scanner started."):

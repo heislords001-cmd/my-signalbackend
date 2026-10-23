@@ -35,6 +35,19 @@ class Scanner:
         self.last_sent: dict[tuple, pd.Timestamp] = {}
         self.htf_cache: dict[tuple, tuple[datetime, pd.DataFrame]] = {}
 
+    def summary(self) -> dict:
+        """What the site should tell you: how many strategy combinations exist, how many passed, and why it may be quiet."""
+        combos = len(self.ratings)
+        with_data = sum(1 for x in self.ratings.values() if x["n"] > 0)
+        approved = sum(1 for x in self.ratings.values() if x["ok"])
+        if combos == 0 or with_data == 0:
+            note = "No price data came back from Yahoo, so nothing could be tested. If this runs on GitHub, Yahoo may be blocking it."
+        elif approved == 0:
+            note = "No strategy has passed the test yet, so no approved signals are sent. Untested signals are shown to you only, marked Untested."
+        else:
+            note = f"{approved} of {combos} strategy combinations passed the test."
+        return {"approved": approved, "combos": combos, "note": note}
+
     def load_ratings(self, rows: list[dict]) -> None:
         for x in rows:
             self.ratings[(x["symbol"], x["timeframe"], x["strategy"])] = {

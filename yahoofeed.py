@@ -16,6 +16,7 @@ TICKERS = {"EURUSD": ["EURUSD=X"], "USDCHF": ["CHF=X"], "USDCAD": ["CAD=X"], "US
 class YahooFeed:
     def __init__(self):
         self.cache: dict[tuple, tuple[float, pd.DataFrame]] = {}
+        self.fail_streak = 0        # in a row: if Yahoo refuses several in a row, stop retrying so a blocked run ends fast
 
     def _raw(self, symbol: str, interval: str, period: str) -> pd.DataFrame:
         key = (symbol, interval)
@@ -24,7 +25,7 @@ class YahooFeed:
             return hit[1]
         df = pd.DataFrame()
         for ticker in TICKERS.get(symbol, [symbol]):
-            for attempt in range(3):
+            for attempt in range(1 if self.fail_streak >= 3 else 3):
                 try:
                     df = yf.download(ticker, interval=interval, period=period, progress=False, auto_adjust=False, threads=False)
                 except Exception:
@@ -34,6 +35,7 @@ class YahooFeed:
                 time.sleep(2 * (attempt + 1))
             if len(df):
                 break
+        self.fail_streak = 0 if len(df) else self.fail_streak + 1
         self.cache[key] = (time.time(), df)
         return df
 

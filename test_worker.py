@@ -61,14 +61,14 @@ def test_telegram_setup():
     assert out == ["SUPABASE_URL=keep", "TELEGRAM_BOT_TOKEN=tok", "FEED=yahoo", "TELEGRAM_CHAT_ID=5"]
 
 
-def test_db_strips_local_only_field():
+def test_db_sends_the_approved_flag():
     sent = {}
     class R:
         def raise_for_status(self): pass
         def json(self): return [{"id": 1}]
     worker.requests.post = lambda url, headers=None, json=None, timeout=None: (sent.update(body=json, url=url), R())[1]
     assert worker.Db("https://x.supabase.co", "k").new_signal(dict(SIG)) is True
-    assert "approved" not in sent["body"] and "on_conflict=symbol,side,timeframe,strategy,bar_time" in sent["url"]
+    assert sent["body"]["approved"] is True and "on_conflict=symbol,side,timeframe,strategy,bar_time" in sent["url"]
 
 
 def test_full_cycle_local():
@@ -90,6 +90,23 @@ def test_full_cycle_local():
     n = len(saved)
     worker.cycle(store, scanner, now + timedelta(seconds=30), True, state)
     assert len(open(store.jsonl).read().splitlines()) == n                                     # same candle: nothing new
+
+
+def test_summary_explains_a_quiet_feed():
+    s = scan_setup()
+    assert "No price data" in s.summary()["note"]                                     # nothing tested at all
+    s.rate_all(Rules())
+    for k in s.ratings:
+        s.ratings[k]["ok"] = False
+    m = s.summary()
+    assert m["approved"] == 0 and m["combos"] == len(s.ratings) and "No strategy has passed" in m["note"]
+    next(iter(s.ratings.values()))["ok"] = True
+    assert s.summary()["approved"] == 1 and "passed the test" in s.summary()["note"]
+    sent = {}
+    db = worker.Db("https://x.supabase.co", "k")
+    db._patch = lambda table, q, body: sent.update(table=table, body=body)
+    db.save_summary(s.summary())
+    assert sent["table"] == "scanner_state" and sent["body"]["last_error"] is None and "approved" in sent["body"]
 
 
 if __name__ == "__main__":

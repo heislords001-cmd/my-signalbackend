@@ -1,5 +1,7 @@
 # FX Desk scanner (backend)
 
+**Before you upload these files, run `migration-2.sql` in Supabase (SQL Editor). The new scanner writes columns that only exist after it.**
+
 The scanner watches the market all day, Monday to Friday, and sends signals. It only reads prices and never trades.
 Pick ONE place to run it:
 
@@ -9,6 +11,7 @@ Costs nothing. GitHub runs `python worker.py --once` for you on a timer: every 5
 2. In the repository: Settings > Secrets and variables > Actions > New repository secret. Add `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` (and optionally `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`).
 3. Open the Actions tab, pick "scanner", press **Run workflow**. The first run tests every strategy and takes a few minutes. Open the run to read its log.
 4. On your website, Home, press **Start scanner**. Until you do, every run stops straight away.
+During your testing month the scanner also sends signals from strategies that have NOT passed the test yet. They are marked Untested and only you (the admin) can see them on the site, so you have something to watch and measure. Set `SEND_UNAPPROVED` to `no` to turn that off.
 Good to know: GitHub can start scheduled runs a few minutes late, and sometimes skips one, so a 5-minute signal can arrive late. If Yahoo ever blocks GitHub's servers, run the scanner on your own PC instead (section B).
 
 ## A. Railway (paid, about $5 a month)
