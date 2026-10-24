@@ -73,10 +73,9 @@ def test_resolve():
     assert is_(backtest.resolve(1, 1.0, 0.9, 1.15, A([1.05]), A([0.95]), A([1.05]), 1), "expired", 0.5)                    # time ran out: close at market
 
 
-def rigged(win: bool):
-    n = 400
+def rigged(win: bool, n: int = 400):
     idx = pd.date_range("2026-03-02", periods=n, freq="5min", tz="UTC")
-    c = np.linspace(1.0, 1.4 if win else 0.6, n)
+    c = np.linspace(1.0, 1.0 + (0.001 * n if win else -0.001 * n), n)
     df = pd.DataFrame({"open": c, "high": c + 0.002, "low": c - 0.002, "close": c}, index=idx)
     pos = list(range(20, n - 60, 20))
     d = 1 if win else 1   # always buy: rising market wins them all, falling market loses them all
@@ -94,6 +93,11 @@ def test_rating_gate():
     assert not backtest.rate(sg.iloc[:0], df, 48)["ok"]                       # no trades: never approved
     df, sg = rigged(True)
     assert not backtest.rate(sg, df, 48, min_test=50)["ok"]                   # too few trades in the exam: not approved
+    assert backtest.rate(*reversed(rigged(True)), 48, min_test=3)["grade"] == "B"   # approved but exam too short for the top grade
+    df, sg = rigged(True, n=2400)
+    assert backtest.rate(sg, df, 48)["grade"] == "A"                          # long clean exam: top grade
+    df, sg = rigged(False)
+    assert backtest.rate(sg, df, 48, min_test=3)["grade"] is None
 
 
 def test_random_walk_is_never_approved():

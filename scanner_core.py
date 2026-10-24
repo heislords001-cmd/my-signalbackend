@@ -13,8 +13,14 @@ from strategies import NAMES, SIGNAL_FUNCS, TF_MIN, TIMEFRAMES, htf_trend
 
 log = logging.getLogger("scanner")
 HIST = {"M5": 40000, "M15": 20000, "H1": 10000, "H4": 3000, "D1": 1000}   # candles used for backtests
-NOT_ENOUGH_DATA = {"n": 0, "win_rate": 0.0, "pf": 0.0, "expectancy": 0.0, "max_dd": 0.0, "test_pf": 0.0, "test_n": 0, "ok": False}
+NOT_ENOUGH_DATA = {"n": 0, "win_rate": 0.0, "pf": 0.0, "expectancy": 0.0, "max_dd": 0.0, "test_pf": 0.0, "test_n": 0, "ok": False, "grade": None}
 LIVE = 1500                                                              # candles used to look for a live signal
+
+
+def fresh(rows: list[dict], hours: float = 26) -> bool:
+    """True when the saved strategy results are recent enough to trust without testing again."""
+    cutoff = pd.Timestamp.now(tz="UTC") - pd.Timedelta(hours=hours)
+    return bool(rows) and all(pd.Timestamp(r["updated_at"]) > cutoff for r in rows)
 
 
 def _round(x: float, ref: float) -> float:
@@ -28,6 +34,32 @@ class Scanner:
         self.last_bar: dict[tuple, pd.Timestamp] = {}
         self.last_sent: dict[tuple, pd.Timestamp] = {}
         self.htf_cache: dict[tuple, tuple[datetime, pd.DataFrame]] = {}
+
+    def summary(self) -> dict:
+        """What the site should tell you: how many strategy combinations exist, how many passed, and why it may be quiet."""
+        combos = len(self.ratings)
+        with_data = sum(1 for x in self.ratings.values() if x["n"] > 0)
+        approved = sum(1 for x in self.ratings.values() if x["ok"])
+        if combos == 0 or with_data == 0:
+            note = "No price data came back from Yahoo, so nothing could be tested. If this runs on GitHub, Yahoo may be blocking it."
+        elif approved == 0:
+            note = "No strategy has passed the test yet, so no approved signals are sent. Untested signals are shown to you only, marked Untested."
+        else:
+            note = f"{approved} of {combos} strategy combinations passed the test."
+        return {"approved": approved, "combos": combos, "note": note}
+
+    def load_ratings(self, rows: list[dict]) -> None:
+        for x in rows:
+            self.ratings[(x["symbol"], x["timeframe"], x["strategy"])] = {
+                "ok": bool(x["enabled"]), "n": x.get("trades") or 0, "win_rate": float(x.get("win_rate") or 0), "pf": float(x.get("pf") or 0),
+                "expectancy": float(x.get("expectancy") or 0), "max_dd": float(x.get("max_dd") or 0), "test_pf": float(x.get("test_pf") or 0),
+                "test_n": x.get("test_n") or 0, "grade": None}
+
+    def seed_cooldown(self, rows: list[dict]) -> None:
+        for x in rows:
+            key, ts = (x["symbol"], x["side"], x["timeframe"], x["strategy"]), pd.Timestamp(x["bar_time"])
+            if key not in self.last_sent or ts > self.last_sent[key]:
+                self.last_sent[key] = ts
 
     # ---- daily: which strategies deserve to send signals ---------------------
     def rate_all(self, r: Rules) -> list[dict]:
@@ -57,7 +89,7 @@ class Scanner:
             self.htf_cache[(sym, htf)] = hit
         return hit[1]
 
-    def scan(self, now: datetime, r: Rules) -> list[dict]:
+    def scan(self, now: datetime, r: Rules, unapproved: bool = False, gate_clock: bool = False) -> list[dict]:
         out: list[dict] = []
         if now.weekday() >= 5 or not (r.scan_start_utc <= now.hour < r.scan_end_utc):
             return out
@@ -66,7 +98,9 @@ class Scanner:
             if sym in r.pairs_off:
                 continue
             for tf, (htf, valid, hold) in TIMEFRAMES.items():
-                names = [n for n in SIGNAL_FUNCS if self.ratings.get((sym, tf, n), {}).get("ok")]
+                if gate_clock and (now.hour * 60 + now.minute) % TF_MIN[tf] >= 3:
+                    continue                                    # cron mode: only look in the 3 minutes after a candle closes
+                names = [n for n in SIGNAL_FUNCS if unapproved or self.ratings.get((sym, tf, n), {}).get("ok")]
                 last = self.last_bar.get((sym, tf))
                 if not names or (last is not None and ts < last + pd.Timedelta(minutes=2 * TF_MIN[tf])):
                     continue                                    # nothing approved, or the next candle has not closed yet
@@ -92,14 +126,14 @@ class Scanner:
                         if key in self.last_sent and df.index[-1] - self.last_sent[key] < pd.Timedelta(minutes=r.cooldown_bars * TF_MIN[tf]):
                             continue
                         self.last_sent[key] = df.index[-1]
-                        rt = self.ratings[(sym, tf, name)]
+                        rt = self.ratings.get((sym, tf, name), NOT_ENOUGH_DATA)
                         e = s.entry
                         out.append({"symbol": sym, "side": side, "timeframe": tf, "htf": htf, "strategy": name,
                                     "entry": _round(e, e), "sl": _round(s.sl, e), "tp1": _round(s.tp1, e), "tp2": _round(s.tp2, e),
                                     "atr": _round(s.atr, e), "bar_time": df.index[-1].isoformat(),
                                     "expires_at": (bar_close + pd.Timedelta(minutes=valid * TF_MIN[tf])).isoformat(),
                                     "max_hold_min": hold * TF_MIN[tf], "win_rate": round(rt["win_rate"], 4),
-                                    "pf": round(rt["pf"], 3), "bt_trades": rt["n"]})
+                                    "pf": round(rt["pf"], 3), "bt_trades": rt["n"], "approved": bool(rt["ok"])})
                 except Exception as ex:
                     log.warning("%s %s: %s", sym, tf, ex)
         return out

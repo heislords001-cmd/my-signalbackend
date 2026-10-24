@@ -39,6 +39,25 @@ def test_empty_and_h4():
     assert len(h4) == 30 and (h4.index.hour % 4 == 0).all()
 
 
+def test_stops_retrying_when_blocked():
+    import time as _t
+    sleeps = []
+    yahoofeed.time.sleep = lambda s: sleeps.append(s)
+    n = {"calls": 0}
+    def refuse(*a, **k):
+        n["calls"] += 1
+        return pd.DataFrame()
+    yahoofeed.yf.download = refuse
+    f = yahoofeed.YahooFeed()
+    for sym in ("EURUSD", "USDCHF", "USDCAD", "USDJPY", "AUDUSD"):
+        f.candles(sym, "M5", 10)
+    assert f.fail_streak >= 3
+    before = n["calls"]
+    f.candles("XAUUSD", "M5", 10)
+    assert n["calls"] - before <= 2                      # one try per ticker, not three, once it is clearly blocked
+
+
 if __name__ == "__main__":
+    test_stops_retrying_when_blocked()
     test_clean_candles(); test_empty_and_h4()
     print("all yahoo feed tests passed")
