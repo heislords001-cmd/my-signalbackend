@@ -81,6 +81,16 @@ def test_outcomes():
     assert got[1]["outcome"] == "tp" and got[2]["outcome"] == "sl" and 3 not in got      # id 3 is still open
 
 
+def test_market_hours():
+    from datetime import datetime, timezone
+    at = lambda y, m, d, h: datetime(y, m, d, h, tzinfo=timezone.utc)
+    assert not sc.market_open(at(2026, 10, 24, 12))        # Saturday
+    assert not sc.market_open(at(2026, 10, 25, 20))        # Sunday before the open
+    assert sc.market_open(at(2026, 10, 25, 21))            # Sunday evening: forex reopens
+    assert sc.market_open(at(2026, 10, 26, 0)) and sc.market_open(at(2026, 10, 28, 15))     # Monday, Wednesday
+    assert sc.market_open(at(2026, 10, 30, 20)) and not sc.market_open(at(2026, 10, 30, 21))   # Friday until 21:00
+
+
 if __name__ == "__main__":
     for n, fn in list(globals().items()):
         if n.startswith("test_"):

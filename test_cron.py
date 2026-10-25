@@ -40,21 +40,46 @@ def test_new_process_each_minute():
     assert open(store.jsonl).read().splitlines() == sent                      # and did not send the same signal again
 
 
-def test_only_looks_right_after_a_candle_closes():
-    s = scan_setup()
+def tf_scanner(tf: str):
+    s = scan_setup()                                               # patches the pair list and timeframes for the tests...
+    sc.TIMEFRAMES = {tf: S.TIMEFRAMES[tf]}                         # ...then we pick the one timeframe under test
+    return s
+
+
+def count_calls(s):
     calls = {"n": 0}
     real = s.feed.candles
     s.feed.candles = lambda *a, **k: (calls.update(n=calls["n"] + 1), real(*a, **k))[1]
+    return calls
+
+
+def test_slow_timeframes_only_look_after_a_candle_closes():
+    s = tf_scanner("M15")
+    s.rate_all(Rules())
+    for k in s.ratings:
+        s.ratings[k]["ok"] = True
+    t = [x.floor("15min") for x in BASE.index[5000:5100] if x.weekday() < 5][0]
+    s.feed.end = t + pd.Timedelta(minutes=14)
+    calls = count_calls(s)
+    s.scan((t + pd.Timedelta(minutes=12)).to_pydatetime(), Rules(), True, gate_clock=True)     # 12 minutes into the candle: quiet
+    assert calls["n"] == 0
+    s.scan((t + pd.Timedelta(minutes=16)).to_pydatetime(), Rules(), True, gate_clock=True)     # a candle just closed: it looks
+    assert calls["n"] > 0
+
+
+def test_five_minute_candles_are_never_skipped_by_a_late_run():
+    s = tf_scanner("M5")
     s.rate_all(Rules())
     for k in s.ratings:
         s.ratings[k]["ok"] = True
     t = a_signal_candle()
     s.feed.end = t + pd.Timedelta(minutes=4)
-    calls["n"] = 0
-    s.scan((t + pd.Timedelta(minutes=3)).to_pydatetime(), Rules(), True, gate_clock=True)     # mid-candle: stays quiet
-    assert calls["n"] == 0
-    s.scan((t + pd.Timedelta(minutes=5, seconds=2)).to_pydatetime(), Rules(), True, gate_clock=True)
-    assert calls["n"] > 0                                                                      # candle just closed: it looks
+    calls = count_calls(s)
+    for late in (0, 1, 2, 3, 4):                                  # runs landing 0 to 4 minutes after the boundary all still look
+        s.last_bar.clear()
+        calls["n"] = 0
+        s.scan((t + pd.Timedelta(minutes=5 + late)).to_pydatetime(), Rules(), True, gate_clock=True)
+        assert calls["n"] > 0, late
 
 
 def test_cooldown_survives_restarts():

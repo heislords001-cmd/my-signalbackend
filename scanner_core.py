@@ -14,7 +14,20 @@ from strategies import NAMES, SIGNAL_FUNCS, TF_MIN, TIMEFRAMES, htf_trend
 log = logging.getLogger("scanner")
 HIST = {"M5": 40000, "M15": 20000, "H1": 10000, "H4": 3000, "D1": 1000}   # candles used for backtests
 NOT_ENOUGH_DATA = {"n": 0, "win_rate": 0.0, "pf": 0.0, "expectancy": 0.0, "max_dd": 0.0, "test_pf": 0.0, "test_n": 0, "ok": False, "grade": None}
+GATE = {"M5": 5, "M15": 10, "H1": 10}   # cron mode: only look this many minutes after a candle closes (M5 = always, so a late run never misses one)
 LIVE = 1500                                                              # candles used to look for a live signal
+
+
+def market_open(now: datetime) -> bool:
+    """Forex trades from Sunday evening to Friday evening (UTC clock). Closed all of Saturday."""
+    wd, h = now.weekday(), now.hour          # Monday = 0 ... Sunday = 6
+    if wd == 5:
+        return False
+    if wd == 6:
+        return h >= 21
+    if wd == 4:
+        return h < 21
+    return True
 
 
 def fresh(rows: list[dict], hours: float = 26) -> bool:
@@ -91,15 +104,15 @@ class Scanner:
 
     def scan(self, now: datetime, r: Rules, unapproved: bool = False, gate_clock: bool = False) -> list[dict]:
         out: list[dict] = []
-        if now.weekday() >= 5 or not (r.scan_start_utc <= now.hour < r.scan_end_utc):
+        if not market_open(now) or not (r.scan_start_utc <= now.hour < r.scan_end_utc):
             return out
         ts = pd.Timestamp(now).tz_localize("UTC") if pd.Timestamp(now).tzinfo is None else pd.Timestamp(now)
         for sym in PAIRS:
             if sym in r.pairs_off:
                 continue
             for tf, (htf, valid, hold) in TIMEFRAMES.items():
-                if gate_clock and (now.hour * 60 + now.minute) % TF_MIN[tf] >= 3:
-                    continue                                    # cron mode: only look in the 3 minutes after a candle closes
+                if gate_clock and (now.hour * 60 + now.minute) % TF_MIN[tf] >= GATE[tf]:
+                    continue                                    # cron mode: skip while no new candle has closed
                 names = [n for n in SIGNAL_FUNCS if unapproved or self.ratings.get((sym, tf, n), {}).get("ok")]
                 last = self.last_bar.get((sym, tf))
                 if not names or (last is not None and ts < last + pd.Timedelta(minutes=2 * TF_MIN[tf])):

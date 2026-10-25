@@ -5,6 +5,11 @@
 The scanner watches the market all day, Monday to Friday, and sends signals. It only reads prices and never trades.
 Pick ONE place to run it:
 
+## Keeping it free (important)
+GitHub gives unlimited free minutes to PUBLIC repositories, but only about 2,000 a month to PRIVATE ones. The timetable in `.github/workflows/scanner.yml` (every 5 minutes, all weekday) uses about 6,300 minutes a month. So pick one:
+- **Make the scanner repository PUBLIC** (repo Settings, General, bottom of the page, Change visibility). Your keys stay safe because they live in Actions secrets, not in the files. The strategy code becomes visible to everyone.
+- **Or keep it private** and change the schedule line to `"*/15 6-20 * * 1-5"` (every 15 minutes, 7am to 9pm Nigeria time). That uses about 1,300 minutes and fits. Five-minute signals will then be seen late or missed.
+
 ## A0. GitHub Actions (FREE: best for your testing month)
 Costs nothing. GitHub runs `python worker.py --once` for you on a timer: every 5 minutes from 1pm to 5pm Nigeria time (Monday to Friday), and once an hour the rest of the day. That fits inside GitHub's free minutes for a private repository.
 1. Put these files in a private GitHub repository. The folder `.github/workflows/scanner.yml` must be included. If a drag-and-drop upload skips it, use Add file > Create new file, type the name `.github/workflows/scanner.yml`, and paste the file's text.
