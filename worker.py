@@ -15,7 +15,7 @@ import requests
 from cloud import load_env, rules_from
 from localstore import LocalStore
 from notify import format_signal, telegram
-from scanner_core import Scanner, fresh
+from scanner_core import Scanner, fresh, market_open
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
 log = logging.getLogger("worker")
@@ -54,6 +54,10 @@ class Db:
 
     def recent_signals(self, since_iso: str) -> list[dict]:
         return self._get("signals", f"created_at=gte.{since_iso}&select=symbol,side,timeframe,strategy,bar_time&limit=500")
+
+    def save_market(self, rows: list[dict]) -> None:
+        h = {**self.h, "Prefer": "resolution=merge-duplicates"}
+        requests.post(f"{self.url}/market_state?on_conflict=symbol", headers=h, json=rows, timeout=20).raise_for_status()
 
     def save_stats(self, rows: list[dict]) -> None:
         h = {**self.h, "Prefer": "resolution=merge-duplicates"}
@@ -110,6 +114,10 @@ def cycle(store, sc: Scanner, now: datetime, unapproved: bool, state: dict, once
         log.info("Approved %d of %d combinations.", sum(x["enabled"] for x in rows), len(rows))
         if isinstance(store, LocalStore):
             print_table(rows)
+    if hasattr(store, "save_market") and market_open(now):        # the scalp bot reads this; skipped while forex is closed so it never trades stale prices
+        rows = sc.snapshot(now, r)
+        if rows:
+            store.save_market(rows)
     if hasattr(store, "save_summary"):
         store.save_summary(sc.summary())
     since = (now - timedelta(days=3)).strftime("%Y-%m-%dT%H:%M:%SZ")

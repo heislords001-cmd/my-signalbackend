@@ -109,6 +109,38 @@ def test_summary_explains_a_quiet_feed():
     assert sent["table"] == "scanner_state" and sent["body"]["last_error"] is None and "approved" in sent["body"]
 
 
+def test_market_snapshot_is_saved_for_the_scalp_bot():
+    scanner = scan_setup()
+    t = a_candle_time()
+    scanner.feed.end = t + pd.Timedelta(minutes=4)
+    now = (t + pd.Timedelta(minutes=5, seconds=2)).to_pydatetime()
+    rows = scanner.snapshot(now, Rules())
+    assert [x["symbol"] for x in rows] == ["EURUSD"]
+    x = rows[0]
+    assert x["trend"] in ("buy", "sell", "none") and x["price"] > 0 and x["ema50"] > 0 and x["atr"] > 0 and x["updated_at"] == now.isoformat()
+    assert pd.Timestamp(x["candle_time"]) == t                                                  # the newest CLOSED candle
+    class Store(LocalStore):
+        saved: list = []
+        def save_market(self, rows): self.saved = rows
+    store = Store(tempfile.mkdtemp())
+    worker.cycle(store, scanner, now, False, {})
+    assert store.saved and store.saved[0]["symbol"] == "EURUSD"                                 # saved on a normal pass
+    store2 = Store(tempfile.mkdtemp())
+    sat = pd.Timestamp("2026-03-07 12:00", tz="UTC").to_pydatetime()
+    worker.cycle(store2, scanner, sat, False, {})
+    assert store2.saved == []                                                                    # forex closed: nothing saved
+    sent = {}
+    db = worker.Db("https://x.supabase.co", "k")
+    worker.requests.post = lambda url, headers=None, json=None, timeout=None: (sent.update(url=url, body=json, prefer=headers["Prefer"]), type("R", (), {"raise_for_status": lambda s: None})())[1]
+    db.save_market(rows)
+    assert "market_state?on_conflict=symbol" in sent["url"] and sent["body"] == rows and "merge-duplicates" in sent["prefer"]
+
+
+def a_candle_time():
+    sg = S.trend_pullback(BASE, S.htf_trend(to_h1(BASE), BASE.index, 60, 5))
+    return [x for x in sg.index[len(sg) // 3:] if x.weekday() < 5][0]
+
+
 if __name__ == "__main__":
     for n, fn in list(globals().items()):
         if n.startswith("test_"):

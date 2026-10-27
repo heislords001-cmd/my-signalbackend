@@ -10,6 +10,7 @@ import pandas as pd
 import backtest
 from config import PAIRS, Rules
 from strategies import NAMES, SIGNAL_FUNCS, TF_MIN, TIMEFRAMES, htf_trend
+from strategy import atr as _atr, ema as _ema
 
 log = logging.getLogger("scanner")
 HIST = {"M5": 40000, "M15": 20000, "H1": 10000, "H4": 3000, "D1": 1000}   # candles used for backtests
@@ -101,6 +102,26 @@ class Scanner:
             hit = (now, self.feed.candles(sym, htf, min(LIVE, HIST[htf])))
             self.htf_cache[(sym, htf)] = hit
         return hit[1]
+
+    def snapshot(self, now: datetime, r: Rules) -> list[dict]:
+        """What the market looks like right now on each pair: the bigger trend, the price, the 5-minute average and the typical
+        candle size. The scalp bot reads this to decide when to open small quick trades."""
+        rows = []
+        for sym in PAIRS:
+            if sym in r.pairs_off:
+                continue
+            try:
+                df = self.feed.candles(sym, "M5", LIVE)
+                if len(df) < 300:
+                    continue
+                trend = int(htf_trend(self._htf(sym, "H1", now), df.index, TF_MIN["H1"], TF_MIN["M5"], r.adx_min).iloc[-1])
+                px = float(df["close"].iloc[-1])
+                rows.append({"symbol": sym, "trend": {1: "buy", -1: "sell", 0: "none"}[trend], "price": _round(px, px),
+                             "ema50": _round(_ema(df["close"], r.ema_fast).iloc[-1], px), "atr": _round(_atr(df, r.atr_period).iloc[-1], px),
+                             "candle_time": df.index[-1].isoformat(), "updated_at": now.isoformat()})
+            except Exception as ex:
+                log.warning("snapshot %s: %s", sym, ex)
+        return rows
 
     def scan(self, now: datetime, r: Rules, unapproved: bool = False, gate_clock: bool = False) -> list[dict]:
         out: list[dict] = []
