@@ -1,31 +1,36 @@
 name: scanner
-true:
+
+on:
   schedule:
-  - cron: '*/5 * * * 1-4'
-  - cron: '*/5 0-20 * * 5'
-  - cron: '*/5 21-23 * * 0'
+    - cron: "*/5 * * * 1-4"
+    - cron: "*/5 0-20 * * 5"
+    - cron: "*/5 21-23 * * 0"
   workflow_dispatch: {}
+
 concurrency:
   group: scanner
   cancel-in-progress: false
+
 jobs:
   scan:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
-        cache: pip
-    - run: pip install -r requirements.txt
-    - run: python worker.py --once
-      env:
-        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-        SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-        FEED: yahoo
-        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
-        ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        YT_CHANNEL_IDS: ${{ secrets.YT_CHANNEL_IDS }}
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python worker.py --once
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          FEED: yahoo
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          YT_CHANNEL_IDS: ${{ secrets.YT_CHANNEL_IDS }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          NVIDIA_MODEL: ${{ secrets.NVIDIA_MODEL }}
