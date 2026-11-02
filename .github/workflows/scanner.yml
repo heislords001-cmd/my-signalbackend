@@ -1,35 +1,31 @@
-# Runs the scanner for FREE on GitHub's servers, by itself, every 5 minutes while forex is open (UTC clock):
-# Sunday 21:00 to Friday 21:00. You add your keys once under Settings > Secrets and variables > Actions. You never start it.
-# NOTE: free minutes are unlimited for PUBLIC repositories. A private repository only gets about 2,000 minutes a month,
-# which this timetable uses up in about a week. See README: "Keeping it free".
 name: scanner
-
-on:
+true:
   schedule:
-    - cron: "*/5 * * * 1-4"          # Monday to Thursday, all day
-    - cron: "*/5 0-20 * * 5"         # Friday until the market closes
-    - cron: "*/5 21-23 * * 0"        # Sunday evening, when forex reopens
-  workflow_dispatch: {}                # the "Run workflow" button, only for testing
-
+  - cron: '*/5 * * * 1-4'
+  - cron: '*/5 0-20 * * 5'
+  - cron: '*/5 21-23 * * 0'
+  workflow_dispatch: {}
 concurrency:
   group: scanner
   cancel-in-progress: false
-
 jobs:
   scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 10                # a safety limit for a stuck run, not a target: a normal run takes about a minute
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-          cache: pip
-      - run: pip install -r requirements.txt
-      - run: python worker.py --once
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-          FEED: yahoo
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: pip
+    - run: pip install -r requirements.txt
+    - run: python worker.py --once
+      env:
+        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        FEED: yahoo
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+        ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        YT_CHANNEL_IDS: ${{ secrets.YT_CHANNEL_IDS }}

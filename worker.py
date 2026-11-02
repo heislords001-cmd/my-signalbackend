@@ -16,6 +16,8 @@ from cloud import load_env, rules_from
 from localstore import LocalStore
 from notify import format_signal, telegram
 from scanner_core import Scanner, fresh, market_open
+from yt_rules import maybe_refresh_rules
+from nvidia_brain import get_signal as nvidia_signal, configured as nvidia_configured
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
 log = logging.getLogger("worker")
@@ -54,6 +56,10 @@ class Db:
 
     def recent_signals(self, since_iso: str) -> list[dict]:
         return self._get("signals", f"created_at=gte.{since_iso}&select=symbol,side,timeframe,strategy,bar_time&limit=500")
+
+    def save_yt_rules(self, rows: list[dict]) -> None:
+        h = {**self.h, "Prefer": "resolution=merge-duplicates"}
+        requests.post(f"{self.url}/yt_rules?on_conflict=video_id", headers=h, json=rows, timeout=20).raise_for_status()
 
     def save_market(self, rows: list[dict]) -> None:
         h = {**self.h, "Prefer": "resolution=merge-duplicates"}
@@ -114,12 +120,28 @@ def cycle(store, sc: Scanner, now: datetime, unapproved: bool, state: dict, once
         log.info("Approved %d of %d combinations.", sum(x["enabled"] for x in rows), len(rows))
         if isinstance(store, LocalStore):
             print_table(rows)
-    if hasattr(store, "save_market") and market_open(now):        # the scalp bot reads this; skipped while forex is closed so it never trades stale prices
+    if hasattr(store, "save_market") and market_open(now):
         rows = sc.snapshot(now, r)
         if rows:
             store.save_market(rows)
+            if nvidia_configured():
+                yt_rows = []
+                if hasattr(store, "load_yt_rules"):
+                    try:
+                        yt_rows = store.load_yt_rules()
+                    except Exception:
+                        pass
+                for snap in rows:
+                    ai = nvidia_signal(snap, yt_rows)
+                    if ai and ai.get("signal") in ("BUY", "SELL"):
+                        log.info("AI brain %s %s (%.2f): %s", snap["symbol"], ai["signal"], ai["confidence"], ai["reasoning"])
     if hasattr(store, "save_summary"):
         store.save_summary(sc.summary())
+    # once a day pull fresh rules from YouTube (silently skipped when keys are absent)
+    today_str = now.strftime("%Y-%m-%d")
+    if state.get("_yt_date") != today_str:
+        maybe_refresh_rules(store)
+        state["_yt_date"] = today_str
     since = (now - timedelta(days=3)).strftime("%Y-%m-%dT%H:%M:%SZ")
     if once:
         sc.seed_cooldown(store.recent_signals(since))
