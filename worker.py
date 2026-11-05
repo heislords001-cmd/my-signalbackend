@@ -18,6 +18,8 @@ from notify import format_signal, telegram
 from scanner_core import Scanner, fresh, market_open
 from yt_rules import maybe_refresh_rules
 from nvidia_brain import get_signal as nvidia_signal, configured as nvidia_configured
+from signal_monitor import check_signal_validity, build_alert_message
+from notify_alerts import send_alert
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
 log = logging.getLogger("worker")
@@ -135,6 +137,26 @@ def cycle(store, sc: Scanner, now: datetime, unapproved: bool, state: dict, once
                     ai = nvidia_signal(snap, yt_rows)
                     if ai and ai.get("signal") in ("BUY", "SELL"):
                         log.info("AI brain %s %s (%.2f): %s", snap["symbol"], ai["signal"], ai["confidence"], ai["reasoning"])
+    # monitor live signals: check validity, alert on WIN or INVALIDATED
+    if hasattr(store, "load_live_signals") and rows:
+        try:
+            live_sigs = store.load_live_signals()
+            snap_by_sym = {r["symbol"]: r for r in rows}
+            for sig in live_sigs:
+                snap = snap_by_sym.get(sig.get("symbol", ""))
+                if not snap:
+                    continue
+                result = check_signal_validity(sig, snap)
+                if not result:
+                    continue
+                if result["status"] in ("INVALIDATED", "WIN"):
+                    msg = build_alert_message(sig, result, now)
+                    send_alert(msg, f"[{result['status']}] {sig.get('symbol')} {sig.get('side','').upper()}")
+                    if hasattr(store, "update_signal_outcome"):
+                        outcome = "win" if result["status"] == "WIN" else "loss"
+                        store.update_signal_outcome(sig["id"], outcome)
+        except Exception as exc:
+            log.warning("signal monitor failed: %s", exc)
     if hasattr(store, "save_summary"):
         store.save_summary(sc.summary())
     # once a day pull fresh rules from YouTube (silently skipped when keys are absent)
