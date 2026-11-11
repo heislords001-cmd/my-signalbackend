@@ -11,7 +11,8 @@ from strategy import adx, atr, ema
 TF_MIN = {"M5": 5, "M15": 15, "H1": 60, "H4": 240, "D1": 1440}
 # entry timeframe -> (higher timeframe that must agree, candles a signal stays valid, max candles to hold the trade)
 TIMEFRAMES = {"M5": ("H1", 3, 48), "M15": ("H4", 3, 32), "H1": ("D1", 2, 24)}
-MIN_RISK_ATR, MAX_RISK_ATR = 0.8, 2.5      # stop distance bounds, in ATR
+SCALP_TIMEFRAMES = {"M5": ("H1", 3, 48)}  # used when scalp_mode = True for higher frequency
+MIN_RISK_ATR, MAX_RISK_ATR = 0.6, 2.5      # stop distance bounds; MIN is now configurable via Rules.min_risk_atr
 TP1_R, TP2_R = 1.5, 3.0                    # targets as multiples of the risk
 
 
@@ -77,5 +78,25 @@ def structure_retest(df: pd.DataFrame, trend: pd.Series, k: int = 3, window: int
     return _pack(df, a, buy, sell, np.minimum(l, l.shift()) - 0.2 * a, np.maximum(h, h.shift()) + 0.2 * a)
 
 
-SIGNAL_FUNCS = {"trend_pullback": trend_pullback, "structure_retest": structure_retest}
-NAMES = {"trend_pullback": "Trend pullback", "structure_retest": "Structure retest"}
+
+def ema_cross_scalp(df: pd.DataFrame, trend: pd.Series) -> pd.DataFrame:
+    """Fast EMA 9 crosses above/below slow EMA 21, with the HTF trend agreeing.
+    Much faster signals than pullback — fires on momentum continuation, not just retracements.
+    Requires ADX > 18 (trend has direction) but does NOT need a full pullback to EMA50.
+    """
+    o, h, l, c = df["open"], df["high"], df["low"], df["close"]
+    fast, slow, a = ema(c, 9), ema(c, 21), atr(df)
+    # cross: fast crosses above slow (buy) or below (sell)
+    cross_up   = (fast > slow) & (fast.shift() <= slow.shift())
+    cross_down = (fast < slow) & (fast.shift() >= slow.shift())
+    # trend agreement: HTF must agree (or be neutral for the cross direction)
+    buy  = cross_up   & (trend >= 0) & (c > o)   # bullish candle on the cross
+    sell = cross_down & (trend <= 0) & (c < o)   # bearish candle on the cross
+    # stop: 1 ATR on the other side of the slow EMA
+    sl_buy  = slow - 0.5 * a
+    sl_sell = slow + 0.5 * a
+    return _pack(df, a, buy, sell, sl_buy, sl_sell)
+
+
+SIGNAL_FUNCS = {"trend_pullback": trend_pullback, "structure_retest": structure_retest, "ema_cross_scalp": ema_cross_scalp}
+NAMES = {"trend_pullback": "Trend pullback", "structure_retest": "Structure retest", "ema_cross_scalp": "EMA cross scalp"}

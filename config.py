@@ -28,17 +28,17 @@ PAIRS = {
 class Rules:
     ema_fast: int = 50
     ema_slow: int = 200
-    adx_min: float = 25.0
+    adx_min: float = 18.0
     atr_period: int = 14
-    pullback_atr: float = 0.25    # how close price must come to the 5m EMA 50
+    pullback_atr: float = 0.45    # how close price must come to the 5m EMA 50
     scalp_tp_atr: float = 0.5     # scalp take-profit distance, in ATR
     runner_sl_atr: float = 1.5    # runner stop-loss distance, in ATR
-    session_start_utc: int = 12   # 1pm Nigeria time
-    session_end_utc: int = 16     # 5pm Nigeria time
+    session_start_utc: int = 7   # 1pm Nigeria time
+    session_end_utc: int = 20     # 5pm Nigeria time
     scan_every_sec: int = 20       # how often the scanner wakes up (it only works when a new candle has closed)
     scan_start_utc: int = 0        # scanner hours: all day, Monday to Friday
     scan_end_utc: int = 24
-    cooldown_bars: int = 6        # no repeat signal on same pair+side within 6 five-minute bars
+    cooldown_bars: int = 4        # no repeat signal on same pair+side within 6 five-minute bars
     # --- Phase 2: trading ---
     scalp_target: int = 6         # scalps kept open per pair while a trend campaign runs (hard cap: Pair.max_scalps)
     scalp_spacing_atr: float = 0.4  # new scalp must be this far (in ATR) from every open scalp
@@ -50,6 +50,7 @@ class Rules:
     basket_cooldown_min: int = 30
     campaign_max_hours: float = 4.0
     campaign_pause_min: int = 30
+    min_risk_atr: float = 0.6    # scalp stops can be tighter than 0.8 ATR
     max_spread_atr: float = 0.2    # skip entries when spread is wider than this share of ATR
     blackouts: list = field(default_factory=list)  # ["2026-10-14T12:25/2026-10-14T13:05", ...] UTC news windows
     # --- small account mode: every trade has a stop, and total open risk is capped by a budget ---
