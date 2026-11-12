@@ -17,7 +17,6 @@ from localstore import LocalStore
 from notify import format_signal, telegram
 from scanner_core import Scanner, fresh, market_open
 from yt_rules import maybe_refresh_rules
-from nvidia_brain import get_signal as nvidia_signal, configured as nvidia_configured
 from signal_monitor import check_signal_validity, build_alert_message
 from notify_alerts import send_alert
 
@@ -39,6 +38,9 @@ class Db:
 
     def _patch(self, table: str, query: str, body: dict) -> None:
         requests.patch(f"{self.url}/{table}?{query}", headers=self.h, json=body, timeout=20).raise_for_status()
+
+    def set_running(self, on: bool) -> None:
+        self._patch("scanner_state", "id=eq.1", {"running": on})
 
     def running(self) -> bool:
         return bool(self._get("scanner_state", "id=eq.1")[0]["running"])
@@ -126,17 +128,6 @@ def cycle(store, sc: Scanner, now: datetime, unapproved: bool, state: dict, once
         rows = sc.snapshot(now, r)
         if rows:
             store.save_market(rows)
-            if nvidia_configured():
-                yt_rows = []
-                if hasattr(store, "load_yt_rules"):
-                    try:
-                        yt_rows = store.load_yt_rules()
-                    except Exception:
-                        pass
-                for snap in rows:
-                    ai = nvidia_signal(snap, yt_rows)
-                    if ai and ai.get("signal") in ("BUY", "SELL"):
-                        log.info("AI brain %s %s (%.2f): %s", snap["symbol"], ai["signal"], ai["confidence"], ai["reasoning"])
     # monitor live signals: check validity, alert on WIN or INVALIDATED
     if hasattr(store, "load_live_signals") and rows:
         try:
@@ -178,6 +169,40 @@ def cycle(store, sc: Scanner, now: datetime, unapproved: bool, state: dict, once
     return r.scan_every_sec
 
 
+def run_loop(store, sc, unapproved: bool, max_seconds: float, state: dict,
+             clock=lambda: datetime.now(timezone.utc), sleep=time.sleep, cycle_fn=None) -> str:
+    """Keeps scanning until one of three things happens, then returns why it stopped:
+      'stopped'  the admin pressed Stop on the site (scanner_state.running is false)
+      'timeout'  the time limit for this GitHub run was reached (the site is marked paused)
+      'closed'   forex is closed, so there is nothing to scan
+    Nothing is left running on its own: every run has a hard limit, and the site shows paused afterwards."""
+    cycle_fn = cycle_fn or cycle
+    started = time.time()
+    while True:
+        now = clock()
+        if not market_open(now):
+            return "closed"
+        if time.time() - started > max_seconds:
+            if hasattr(store, "set_running"):
+                try:
+                    store.set_running(False)
+                except Exception as e:
+                    log.warning("could not mark scanner paused: %s", e)
+            return "timeout"
+        if hasattr(store, "running") and not store.running():
+            return "stopped"
+        try:
+            wait = cycle_fn(store, sc, now, unapproved, state)
+        except Exception as e:
+            log.warning("loop error: %s", e)
+            try:
+                store.error(str(e))
+            except Exception:
+                pass
+            wait = 15
+        sleep(min(wait, max(0, max_seconds - (time.time() - started))))
+
+
 def main() -> None:
     load_env()
     url, key = os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_KEY")
@@ -202,17 +227,9 @@ def main() -> None:
                 pass
             sys.exit(1)
         return
-    wait = 15
-    while True:
-        try:
-            wait = cycle(store, sc, datetime.now(timezone.utc), unapproved, state)
-        except Exception as e:
-            log.warning("loop error: %s", e)
-            try:
-                store.error(str(e))
-            except Exception:
-                pass
-        time.sleep(wait)
+    max_minutes = float(os.getenv("MAX_RUN_MINUTES") or "330")   # GitHub allows 6 hours; stop a little before that
+    reason = run_loop(store, sc, unapproved, max_minutes * 60, state)
+    log.info("Scanner stopped: %s", reason)
 
 
 if __name__ == "__main__":

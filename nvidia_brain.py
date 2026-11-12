@@ -72,7 +72,7 @@ def get_signal(snapshot: dict, yt_rules: list[dict]) -> dict | None:
         r = requests.post(
             f"{NVIDIA_BASE}/chat/completions",
             headers={"Authorization": f"Bearer {_key()}", "Content-Type": "application/json"},
-            json={"model": os.environ.get("NVIDIA_MODEL", DEFAULT_MODEL),
+            json={"model": (os.environ.get("NVIDIA_MODEL") or "").strip() or DEFAULT_MODEL,
                   "messages": [{"role": "user", "content": prompt}],
                   "max_tokens": 200, "temperature": 0.1},
             timeout=30,

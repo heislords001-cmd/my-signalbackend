@@ -1,10 +1,9 @@
+# The scanner runs ONLY when someone presses Start on the FX Desk site (or the Run workflow button here).
+# It keeps scanning until Stop is pressed, forex closes, or it reaches the 5.5 hour limit below.
+# There is no timer: nothing runs in the background without a Start.
 name: scanner
 
 on:
-  schedule:
-    - cron: "*/5 * * * 1-4"
-    - cron: "*/5 0-20 * * 5"
-    - cron: "*/5 21-23 * * 0"
   workflow_dispatch: {}
 
 concurrency:
@@ -14,7 +13,7 @@ concurrency:
 jobs:
   scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 340          # GitHub's hard maximum is 360; the worker stops itself at 330 minutes
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -22,18 +21,19 @@ jobs:
           python-version: "3.11"
           cache: pip
       - run: pip install -r requirements.txt
-      - run: python worker.py --once
+      - run: python worker.py
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           FEED: yahoo
-          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
-          NVIDIA_MODEL: ${{ secrets.NVIDIA_MODEL }}
+          MAX_RUN_MINUTES: "330"
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
-          ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
-          ALERT_FROM_EMAIL: ${{ secrets.ALERT_FROM_EMAIL }}
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           YT_CHANNEL_IDS: ${{ secrets.YT_CHANNEL_IDS }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          NVIDIA_MODEL: ${{ secrets.NVIDIA_MODEL }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
+          ALERT_FROM_EMAIL: ${{ secrets.ALERT_FROM_EMAIL }}

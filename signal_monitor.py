@@ -48,7 +48,7 @@ def _nvidia_key() -> str:
 
 
 def _model() -> str:
-    return os.environ.get("NVIDIA_MODEL", "mistralai/mistral-7b-instruct")
+    return (os.environ.get("NVIDIA_MODEL") or "").strip() or "mistralai/mistral-medium-3.5-128b"
 
 
 def check_signal_validity(signal: dict, snapshot: dict) -> Optional[dict]:
