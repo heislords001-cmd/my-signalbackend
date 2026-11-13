@@ -1,7 +1,7 @@
 """Sizes each signal's stop loss to a dollar budget, so one stop-out cannot wipe a small account.
 
 The stop is measured at the smallest lot (0.01), because that is the lot a small account actually trades.
-  budget      = ACCOUNT_USD x RISK_PCT        (default: $10 x 5% = $0.50 per trade)
+  budget      = ACCOUNT_USD x RISK_PCT        (default: $10 x 10% = $1.00 per trade)
   If the volatility stop costs more than the budget at 0.01 lots, the stop is pulled in to fit the budget.
   If it cannot be pulled in without going below FLOOR_ATR x ATR (too tight to be meaningful), the signal is skipped.
 Targets are then recalculated from the new stop, keeping the same multiples (1.5R and 3R).
@@ -21,7 +21,7 @@ def account_usd() -> float:
 
 
 def risk_pct() -> float:
-    return float(os.environ.get("RISK_PCT") or 5) / 100
+    return float(os.environ.get("RISK_PCT") or 10) / 100
 
 
 def budget_usd() -> float:
