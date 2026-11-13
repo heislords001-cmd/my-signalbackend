@@ -15,6 +15,8 @@ from typing import Optional
 
 import requests
 
+import ai_client
+
 log = logging.getLogger("signal_monitor")
 
 MONITOR_PROMPT = """\
@@ -44,11 +46,11 @@ NVIDIA_BASE = "https://integrate.api.nvidia.com/v1"
 
 
 def _nvidia_key() -> str:
-    return os.environ.get("NVIDIA_API_KEY", "")
+    return ai_client.endpoint()[1] or ""
 
 
 def _model() -> str:
-    return (os.environ.get("NVIDIA_MODEL") or "").strip() or "mistralai/mistral-medium-3.5-128b"
+    return ai_client.endpoint()[2] or ""
 
 
 def check_signal_validity(signal: dict, snapshot: dict) -> Optional[dict]:
@@ -67,7 +69,7 @@ def check_signal_validity(signal: dict, snapshot: dict) -> Optional[dict]:
     )
     try:
         r = requests.post(
-            f"{NVIDIA_BASE}/chat/completions",
+            ai_client.endpoint()[0],
             headers={"Authorization": f"Bearer {_nvidia_key()}", "Content-Type": "application/json"},
             json={"model": _model(),
                   "messages": [{"role": "user", "content": prompt}],
@@ -109,21 +111,23 @@ def _math_check(signal: dict, snapshot: dict) -> dict:
 
 
 def build_alert_message(signal: dict, result: dict, now: datetime) -> str:
-    """Build the alert message in the same style as your friend's bot."""
-    emoji = {"ACTIVE": "✅", "WIN": "🏆", "INVALIDATED": "🚨"}.get(result["status"], "ℹ️")
-    action = result.get("recommended_action", "")
-    reasoning = result.get("reasoning", "")
-    ts = now.strftime("%a, %d %b %Y %H:%M:%S GMT")
-    sym = signal.get("symbol", "")
-    side = str(signal.get("side", "")).upper()
-    entry = signal.get("entry", "")
-    tf = signal.get("timeframe", "")
+    """Alert in the signal format: side, symbol, entry, stop loss, take profits, hold time, and the status."""
     status = result["status"]
+    emoji = {"ACTIVE": "✅", "WIN": "🏆", "INVALIDATED": "⚠️"}.get(status, "ℹ️")
+    side = str(signal.get("side", "")).upper()
+    sym = signal.get("symbol", "")
+    tf = signal.get("timeframe", "")
+    hold = signal.get("max_hold_min")
     lines = [
-        f"{emoji} [{status}] {side} {sym} @ {entry}",
-        f"{emoji} SIGNAL {status}" + (" — CANCEL / EXIT NOW" if status == "INVALIDATED" else ""),
-        f"{side} {sym} — {reasoning}",
-        f"Timeframe: {tf} · {ts}",
-        f"Recommended Action: {action}",
+        f"{side} {sym}",
+        f"ENTRY: {signal.get('entry', '')}",
+        f"STOP LOSS: {signal.get('sl', '')}",
+        f"TAKE PROFIT 1: {signal.get('tp1', '')}",
+        f"TAKE PROFIT 2: {signal.get('tp2', '')}",
+        f"Timeframe: {tf}" + (f" · hold up to {int(hold) // 60}h {int(hold) % 60}m" if hold else ""),
+        f"{emoji} {status}: {result.get('reasoning', '')}",
+        f"{now.strftime('%a, %d %b %Y %H:%M')} GMT",
     ]
+    if status == "INVALIDATED":
+        lines.append("Warning only. The trade is still open until its stop loss or take profit is hit.")
     return "\n".join(lines)

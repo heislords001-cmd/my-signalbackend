@@ -36,8 +36,8 @@ assert r["status"] == "INVALIDATED"; ok("AI failure falls back to maths")
 # alert message format matches your friend's bot style
 r = {"status": "INVALIDATED", "reasoning": "Setup Invalidated Monitored Outgoing Trade Protection.", "recommended_action": "Cancel/Exit NOW"}
 msg = build_alert_message(SELL_SIG, r, NOW)
-assert "[INVALIDATED]" in msg; assert "GBPUSD" in msg; assert "Cancel/Exit NOW" in msg; assert "M15" in msg; assert "2026" in msg; ok("alert message format")
+assert "SELL GBPUSD" in msg and "STOP LOSS: 1.351" in msg and "TAKE PROFIT 1: 1.345" in msg and "TAKE PROFIT 2: 1.342" in msg and "M15" in msg; assert "still open" in msg; ok("alert carries entry, stop loss, both take profits and the status")
 r2 = {"status": "WIN", "reasoning": "TP1 hit.", "recommended_action": "Take profit"}
-msg2 = build_alert_message(BUY_SIG, r2, NOW); assert "WIN" in msg2 and "Take profit" in msg2; ok("win message format")
+msg2 = build_alert_message(BUY_SIG, r2, NOW); assert "WIN" in msg2 and "BUY EURUSD" in msg2 and "TAKE PROFIT 1: 1.103" in msg2; ok("win message format")
 
 print("\nall signal_monitor tests passed")

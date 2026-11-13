@@ -11,6 +11,7 @@ import backtest
 from config import PAIRS, Rules
 from strategies import NAMES, SIGNAL_FUNCS, TF_MIN, TIMEFRAMES, htf_trend
 from strategy import atr as _atr, ema as _ema
+from account_risk import fit_stop
 
 log = logging.getLogger("scanner")
 HIST = {"M5": 40000, "M15": 20000, "H1": 10000, "H4": 3000, "D1": 1000}   # candles used for backtests
@@ -162,8 +163,12 @@ class Scanner:
                         self.last_sent[key] = df.index[-1]
                         rt = self.ratings.get((sym, tf, name), NOT_ENOUGH_DATA)
                         e = s.entry
+                        fit = fit_stop(sym, side, e, s.sl, s.atr)
+                        if fit is None:
+                            log.info("%s %s %s %s skipped: the stop does not fit the account budget at 0.01 lots", sym, tf, name, side)
+                            continue
                         out.append({"symbol": sym, "side": side, "timeframe": tf, "htf": htf, "strategy": name,
-                                    "entry": _round(e, e), "sl": _round(s.sl, e), "tp1": _round(s.tp1, e), "tp2": _round(s.tp2, e),
+                                    "entry": _round(e, e), "sl": _round(fit["sl"], e), "tp1": _round(fit["tp1"], e), "tp2": _round(fit["tp2"], e),
                                     "atr": _round(s.atr, e), "bar_time": df.index[-1].isoformat(),
                                     "expires_at": (bar_close + pd.Timedelta(minutes=valid * TF_MIN[tf])).isoformat(),
                                     "max_hold_min": hold * TF_MIN[tf], "win_rate": round(rt["win_rate"], 4),

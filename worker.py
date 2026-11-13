@@ -143,9 +143,7 @@ def cycle(store, sc: Scanner, now: datetime, unapproved: bool, state: dict, once
                 if result["status"] in ("INVALIDATED", "WIN"):
                     msg = build_alert_message(sig, result, now)
                     send_alert(msg, f"[{result['status']}] {sig.get('symbol')} {sig.get('side','').upper()}")
-                    if hasattr(store, "update_signal_outcome"):
-                        outcome = "win" if result["status"] == "WIN" else "loss"
-                        store.update_signal_outcome(sig["id"], outcome)
+                    # the monitor only ALERTS. Results are written by sc.outcomes(), which follows the real stop, target and hold time.
         except Exception as exc:
             log.warning("signal monitor failed: %s", exc)
     if hasattr(store, "save_summary"):

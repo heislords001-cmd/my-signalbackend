@@ -11,6 +11,8 @@ from __future__ import annotations
 import json, logging, os
 import requests
 
+import ai_client
+
 log = logging.getLogger("nvidia_brain")
 
 NVIDIA_BASE = "https://integrate.api.nvidia.com/v1"
@@ -40,7 +42,7 @@ Rules:
 """
 
 def _key() -> str:
-    return os.environ.get("NVIDIA_API_KEY", "")
+    return ai_client.endpoint()[1] or ""
 
 def configured() -> bool:
     return bool(_key())
@@ -70,9 +72,9 @@ def get_signal(snapshot: dict, yt_rules: list[dict]) -> dict | None:
 
     try:
         r = requests.post(
-            f"{NVIDIA_BASE}/chat/completions",
+            ai_client.endpoint()[0],
             headers={"Authorization": f"Bearer {_key()}", "Content-Type": "application/json"},
-            json={"model": (os.environ.get("NVIDIA_MODEL") or "").strip() or DEFAULT_MODEL,
+            json={"model": ai_client.endpoint()[2],
                   "messages": [{"role": "user", "content": prompt}],
                   "max_tokens": 200, "temperature": 0.1},
             timeout=30,
