@@ -98,5 +98,37 @@ def ema_cross_scalp(df: pd.DataFrame, trend: pd.Series) -> pd.DataFrame:
     return _pack(df, a, buy, sell, sl_buy, sl_sell)
 
 
-SIGNAL_FUNCS = {"trend_pullback": trend_pullback, "structure_retest": structure_retest, "ema_cross_scalp": ema_cross_scalp}
-NAMES = {"trend_pullback": "Trend pullback", "structure_retest": "Structure retest", "ema_cross_scalp": "EMA cross scalp"}
+
+def fvg_retrace(df: pd.DataFrame, trend: pd.Series) -> pd.DataFrame:
+    """Fair value gap. A three-candle gap (a bullish gap is when a candle's low is above the high two candles before it,
+    a bearish gap is the mirror) that price later returns into. Trades only with the trend. Gaps expire after 30 bars
+    and are dropped once price closes through them. Only uses candles that have already closed (no look-ahead)."""
+    a = atr(df)
+    n = len(df)
+    H, L, C, O, A = (df["high"].values, df["low"].values, df["close"].values, df["open"].values, a.values)
+    T = trend.values
+    buy = np.zeros(n, bool); sell = np.zeros(n, bool)
+    sl_b = C - A; sl_s = C + A
+    bulls, bears = [], []                       # each gap: [created_bar, bottom, top]
+    for t in range(2, n):
+        # 1. signals on bar t, using only gaps made BEFORE bar t
+        bulls = [g for g in bulls if t - g[0] <= 30 and C[t] >= g[1]]
+        bears = [g for g in bears if t - g[0] <= 30 and C[t] <= g[2]]
+        if T[t] == 1 and C[t] > O[t] and bulls:
+            g = bulls[-1]
+            if L[t] <= g[2] and C[t] >= g[1]:
+                buy[t] = True; sl_b[t] = g[1] - 0.25 * A[t]
+        if T[t] == -1 and C[t] < O[t] and bears:
+            g = bears[-1]
+            if H[t] >= g[1] and C[t] <= g[2]:
+                sell[t] = True; sl_s[t] = g[2] + 0.25 * A[t]
+        # 2. then record any new gap formed by candles t-2 and t
+        if L[t] > H[t - 2]:
+            bulls.append([t, H[t - 2], L[t]])
+        if H[t] < L[t - 2]:
+            bears.append([t, H[t], L[t - 2]])
+    return _pack(df, a, pd.Series(buy, index=df.index), pd.Series(sell, index=df.index),
+                 pd.Series(sl_b, index=df.index), pd.Series(sl_s, index=df.index))
+
+SIGNAL_FUNCS = {"trend_pullback": trend_pullback, "structure_retest": structure_retest, "ema_cross_scalp": ema_cross_scalp, "fvg_retrace": fvg_retrace}
+NAMES = {"trend_pullback": "Trend pullback", "structure_retest": "Structure retest", "ema_cross_scalp": "EMA cross scalp", "fvg_retrace": "Fair value gap"}

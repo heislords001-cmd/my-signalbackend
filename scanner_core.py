@@ -13,6 +13,8 @@ from strategies import NAMES, SIGNAL_FUNCS, TF_MIN, TIMEFRAMES, htf_trend
 from strategy import atr as _atr, ema as _ema
 from account_risk import fit_stop
 
+TOP_TF = {"M5": "H4", "M15": "D1"}   # the timeframe above the higher one, for the agreement line
+
 log = logging.getLogger("scanner")
 HIST = {"M5": 40000, "M15": 20000, "H1": 10000, "H4": 3000, "D1": 1000}   # candles used for backtests
 NOT_ENOUGH_DATA = {"n": 0, "win_rate": 0.0, "pf": 0.0, "expectancy": 0.0, "max_dd": 0.0, "test_pf": 0.0, "test_n": 0, "ok": False, "grade": None}
@@ -167,7 +169,8 @@ class Scanner:
                         if fit is None:
                             log.info("%s %s %s %s skipped: the stop does not fit the account budget at 0.01 lots", sym, tf, name, side)
                             continue
-                        out.append({"symbol": sym, "side": side, "timeframe": tf, "htf": htf, "strategy": name,
+                        agree = self._agreement(sym, tf, htf, side, df, now, r)
+                        out.append({"symbol": sym, "side": side, "timeframe": tf, "htf": htf, "strategy": name, "agreement": agree,
                                     "entry": _round(e, e), "sl": _round(fit["sl"], e), "tp1": _round(fit["tp1"], e), "tp2": _round(fit["tp2"], e),
                                     "atr": _round(s.atr, e), "bar_time": df.index[-1].isoformat(),
                                     "expires_at": (bar_close + pd.Timedelta(minutes=valid * TF_MIN[tf])).isoformat(),
@@ -176,6 +179,24 @@ class Scanner:
                 except Exception as ex:
                     log.warning("%s %s: %s", sym, tf, ex)
         return out
+
+    def _agreement(self, sym, tf, htf, side, df, now, r) -> str:
+        """Does each higher timeframe agree with the signal? Reads 'H1 agrees · H4 agrees' or 'D1 conflicts'."""
+        word = lambda v: "agrees" if v == (1 if side == "buy" else -1) else ("conflicts" if v == (-1 if side == "buy" else 1) else "neutral")
+        parts = []
+        try:
+            t_htf = htf_trend(self._htf(sym, htf, now), df.index, TF_MIN[htf], TF_MIN[tf], r.adx_min)
+            parts.append(f"{htf} {word(int(t_htf.iloc[-1]))}")
+        except Exception:
+            parts.append(f"{htf} unknown")
+        top = TOP_TF.get(tf)
+        if top:
+            try:
+                t_top = htf_trend(self._htf(sym, top, now), df.index, TF_MIN[top], TF_MIN[tf], r.adx_min)
+                parts.append(f"{top} {word(int(t_top.iloc[-1]))}")
+            except Exception:
+                parts.append(f"{top} unknown")
+        return " · ".join(parts)
 
     # ---- how did earlier signals end? ---------------------------------------------
     def outcomes(self, open_signals: list[dict], now: datetime) -> list[dict]:

@@ -20,6 +20,8 @@ PAIRS = {
     "USDCAD": Pair("CAD=X", 0.05, 0.10, 20),
     "USDJPY": Pair("JPY=X", 0.05, 0.10, 20),
     "AUDUSD": Pair("AUDUSD=X", 0.05, 0.10, 20),
+    "GBPUSD": Pair("GBPUSD=X", 0.05, 0.10, 20),
+    "NZDUSD": Pair("NZDUSD=X", 0.05, 0.10, 20),
     "XAUUSD": Pair("XAUUSD=X", 0.01, 0.03, 8, 100, 1.2),  # gold: smaller lots, lower cap
 }
 

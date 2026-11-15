@@ -110,3 +110,32 @@ Then on the website: Home > Start scanner. The first start backtests everything 
 - Prices come from Yahoo Finance (free). They are close to your broker's, but not identical, so treat entries as approximate and use the distances to the stop and targets.
 - Yahoo only gives about 2 months of 5-minute and 15-minute history and 2 years of 1-hour history. So fewer combinations pass the test at first, mostly 1-hour ones. That is the safety check being strict, not a fault.
 - To update: upload the new zip, run `unzip -o`, then `sudo systemctl restart fx-scanner`.
+
+---
+
+## What this version includes
+
+**Pairs scanned (8):** EURUSD, USDCHF, USDCAD, USDJPY, AUDUSD, GBPUSD, NZDUSD, XAUUSD (gold).
+Cross pairs such as EURJPY and GBPJPY are not included yet: their profit is in a second currency, and the dollar sizing does not convert it.
+
+**Strategies (4):**
+- Trend pullback: higher-timeframe trend, then a pullback to the 50 EMA.
+- Structure retest: a swing break followed by a retest of that level.
+- EMA cross scalp: fast 9/21 EMA cross in the direction of the trend.
+- Fair value gap: a three-candle gap that price returns into, traded with the trend.
+
+**Stop sizing (account_risk.py):** every stop is sized to a dollar budget, so one stop-out cannot wipe a small account.
+- `ACCOUNT_USD` (default 10) and `RISK_PCT` (default 10) set the budget: $1 per trade by default.
+- The stop is measured at 0.01 lots. If it costs more than the budget, it is pulled in.
+- If it cannot be pulled in without going below half a candle, the signal is skipped.
+
+**Timeframe agreement:** each signal records whether its higher timeframe, and the one above it, agree with the signal.
+
+**AI (ai_client.py):** one client for any OpenAI-style provider. Set `AI_PROVIDER` (nvidia, mistral or custom), `AI_API_KEY`, `AI_MODEL` and, for custom providers, `AI_BASE_URL`.
+
+**Scalper (scalper.py):** cluster scalper that runs on any MT5 broker through broker.py. Not yet connected to the live loop.
+
+**Saving signals:** if a newer column is missing from the database, the signal still saves without it, and a warning says which migration to run.
+
+## Database migrations (run in order in Supabase, all safe to repeat)
+`migration-2.sql`, `migration-3.sql`, `migration-4.sql`, `migration-5.sql`, `migration-8.sql`, `migration-9.sql`, `migration-10.sql`.

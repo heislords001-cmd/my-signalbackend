@@ -3,6 +3,7 @@ Prices come from Yahoo Finance (free). It can run on Railway, any Linux server, 
 With SUPABASE_URL and SUPABASE_SERVICE_KEY set, it feeds your website. Without them it runs in LOCAL mode:
 signals go to Telegram and to files in the data folder."""
 from __future__ import annotations
+import re
 
 import logging
 import os
@@ -76,11 +77,25 @@ class Db:
     def save_summary(self, summary: dict) -> None:
         self._patch("scanner_state", "id=eq.1", {**summary, "last_error": None})
 
+    # columns added by later migrations. If one is missing from the database, the signal is still saved without it.
+    OPTIONAL_SIGNAL_COLUMNS = {"agreement", "ai_note", "max_hold_min", "approved", "win_rate", "pf", "bt_trades", "expires_at", "htf", "source"}
+
     def new_signal(self, row: dict) -> bool:
         h = {**self.h, "Prefer": "resolution=ignore-duplicates,return=representation"}
-        r = requests.post(f"{self.url}/signals?on_conflict=symbol,side,timeframe,strategy,bar_time", headers=h, json=row, timeout=20)
+        body = dict(row)
+        for _ in range(len(self.OPTIONAL_SIGNAL_COLUMNS) + 1):
+            r = requests.post(f"{self.url}/signals?on_conflict=symbol,side,timeframe,strategy,bar_time", headers=h, json=body, timeout=20)
+            code = getattr(r, "status_code", 200)
+            if code < 300:
+                return bool(r.json())          # empty when it was a duplicate
+            missing = [k for k in body if k in self.OPTIONAL_SIGNAL_COLUMNS and re.search(rf"\b{k}\b", r.text)]
+            if code != 400 or not missing:
+                r.raise_for_status()
+            log.warning("signals table has no column %s yet: saving without it. Run the latest migration in Supabase.", ", ".join(missing))
+            for k in missing:
+                body.pop(k, None)
         r.raise_for_status()
-        return bool(r.json())          # empty when it was a duplicate
+        return False
 
     def open_signals(self, since_iso: str) -> list[dict]:
         return self._get("signals", f"outcome=is.null&tp1=not.is.null&created_at=gte.{since_iso}&select=id,symbol,timeframe,side,bar_time,entry,sl,tp1&limit=200")
@@ -124,6 +139,7 @@ def cycle(store, sc: Scanner, now: datetime, unapproved: bool, state: dict, once
         log.info("Approved %d of %d combinations.", sum(x["enabled"] for x in rows), len(rows))
         if isinstance(store, LocalStore):
             print_table(rows)
+    rows: list[dict] = []
     if hasattr(store, "save_market") and market_open(now):
         rows = sc.snapshot(now, r)
         if rows:
