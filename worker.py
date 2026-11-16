@@ -78,7 +78,7 @@ class Db:
         self._patch("scanner_state", "id=eq.1", {**summary, "last_error": None})
 
     # columns added by later migrations. If one is missing from the database, the signal is still saved without it.
-    OPTIONAL_SIGNAL_COLUMNS = {"agreement", "ai_note", "max_hold_min", "approved", "win_rate", "pf", "bt_trades", "expires_at", "htf", "source"}
+    OPTIONAL_SIGNAL_COLUMNS = {"agreement", "risk_warning", "ai_note", "max_hold_min", "approved", "win_rate", "pf", "bt_trades", "expires_at", "htf", "source"}
 
     def new_signal(self, row: dict) -> bool:
         h = {**self.h, "Prefer": "resolution=ignore-duplicates,return=representation"}

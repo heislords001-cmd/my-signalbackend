@@ -34,4 +34,12 @@ ok("the budget can be changed")
 
 os.environ["RISK_PCT"] = "10"
 assert risk.budget_usd() == 1.0; ok("RISK_PCT can be raised back to 10%")
-print("\nall risk checks passed")
+
+
+# a too-wide stop is published with a warning that states the cost; a fitting stop has no warning
+os.environ["RISK_PCT"] = "10"
+w = risk.stop_warning("EURUSD", 1.1000, 1.0980)              # 20 pips at 0.01 lots = $2.00, budget $1.00
+assert w and "costs $2.00" in w and "budget $1.00" in w
+assert risk.stop_warning("EURUSD", 1.1000, 1.0995) is None   # 5 pips = $0.50, fits
+print("ok a too-wide stop gets a warning with its cost; a fitting stop does not")
+print("warning checks passed")

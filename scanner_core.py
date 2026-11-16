@@ -11,7 +11,7 @@ import backtest
 from config import PAIRS, Rules
 from strategies import NAMES, SIGNAL_FUNCS, TF_MIN, TIMEFRAMES, htf_trend
 from strategy import atr as _atr, ema as _ema
-from account_risk import fit_stop
+from account_risk import fit_stop, stop_warning
 
 TOP_TF = {"M5": "H4", "M15": "D1"}   # the timeframe above the higher one, for the agreement line
 
@@ -166,11 +166,13 @@ class Scanner:
                         rt = self.ratings.get((sym, tf, name), NOT_ENOUGH_DATA)
                         e = s.entry
                         fit = fit_stop(sym, side, e, s.sl, s.atr)
+                        warn = None
                         if fit is None:
-                            log.info("%s %s %s %s skipped: the stop does not fit the account budget at 0.01 lots", sym, tf, name, side)
-                            continue
+                            # too wide for the budget: publish the signal with its own stop and a clear warning, never hide it
+                            fit = {"sl": s.sl, "tp1": s.tp1, "tp2": s.tp2}
+                            warn = stop_warning(sym, e, s.sl)
                         agree = self._agreement(sym, tf, htf, side, df, now, r)
-                        out.append({"symbol": sym, "side": side, "timeframe": tf, "htf": htf, "strategy": name, "agreement": agree,
+                        out.append({"symbol": sym, "side": side, "timeframe": tf, "htf": htf, "strategy": name, "agreement": agree, "risk_warning": warn,
                                     "entry": _round(e, e), "sl": _round(fit["sl"], e), "tp1": _round(fit["tp1"], e), "tp2": _round(fit["tp2"], e),
                                     "atr": _round(s.atr, e), "bar_time": df.index[-1].isoformat(),
                                     "expires_at": (bar_close + pd.Timedelta(minutes=valid * TF_MIN[tf])).isoformat(),

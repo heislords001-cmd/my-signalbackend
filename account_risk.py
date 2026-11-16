@@ -45,3 +45,12 @@ def fit_stop(symbol: str, side: str, entry: float, sl: float, atr: float, budget
         "risk_usd": round(new_risk * usd_per_price, 2),
         "tightened": new_risk < risk,
     }
+
+
+def stop_warning(symbol: str, entry: float, sl: float, budget: float | None = None) -> str | None:
+    """Returns a warning when the stop costs more than the budget at 0.01 lots, otherwise None."""
+    budget = budget_usd() if budget is None else budget
+    cost = abs(entry - sl) * money(symbol, MIN_LOT, 1.0, entry)
+    if cost <= budget:
+        return None
+    return f"Stop too wide for ${account_usd():g} at 0.01 lots: costs ${cost:.2f} (budget ${budget:.2f}). Trade smaller or skip."
