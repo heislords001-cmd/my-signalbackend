@@ -40,6 +40,25 @@ class Db:
     def _patch(self, table: str, query: str, body: dict) -> None:
         requests.patch(f"{self.url}/{table}?{query}", headers=self.h, json=body, timeout=20).raise_for_status()
 
+    def any_receivers(self) -> bool:
+        """True while at least one member has their signals switched on."""
+        r = requests.get(f"{self.url}/user_settings?data->>signals_on=eq.true&select=user_id&limit=1", headers=self.h, timeout=20)
+        r.raise_for_status()
+        return bool(r.json())
+
+    def claim_lease(self) -> bool:
+        """Only one scanner may run. The lease is the heartbeat: it is free when nobody has beaten within 3 minutes."""
+        now = datetime.now(timezone.utc)
+        cutoff = (now - timedelta(minutes=3)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        r = requests.patch(f"{self.url}/scanner_state?id=eq.1&or=(heartbeat.is.null,heartbeat.lt.{cutoff})",
+                           headers={**self.h, "Prefer": "return=representation"},
+                           json={"heartbeat": now.strftime("%Y-%m-%dT%H:%M:%SZ")}, timeout=20)
+        r.raise_for_status()
+        return bool(r.json())
+
+    def release_lease(self) -> None:
+        self._patch("scanner_state", "id=eq.1", {"heartbeat": None})
+
     def set_running(self, on: bool) -> None:
         self._patch("scanner_state", "id=eq.1", {"running": on})
 
@@ -205,6 +224,8 @@ def run_loop(store, sc, unapproved: bool, max_seconds: float, state: dict,
             return "timeout"
         if hasattr(store, "running") and not store.running():
             return "stopped"
+        if hasattr(store, "any_receivers") and not store.any_receivers():
+            return "nobody receiving"
         try:
             wait = cycle_fn(store, sc, now, unapproved, state)
         except Exception as e:
@@ -242,7 +263,14 @@ def main() -> None:
             sys.exit(1)
         return
     max_minutes = float(os.getenv("MAX_RUN_MINUTES") or "330")   # GitHub allows 6 hours; stop a little before that
-    reason = run_loop(store, sc, unapproved, max_minutes * 60, state)
+    if hasattr(store, "claim_lease") and not store.claim_lease():
+        log.info("Another scanner is already running. This one exits without scanning, so there is never a second scan.")
+        return
+    try:
+        reason = run_loop(store, sc, unapproved, max_minutes * 60, state)
+    finally:
+        if hasattr(store, "release_lease"):
+            store.release_lease()
     log.info("Scanner stopped: %s", reason)
 
 
