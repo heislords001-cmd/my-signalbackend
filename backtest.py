@@ -51,7 +51,7 @@ def stats(r: pd.Series) -> dict:
             "expectancy": float(r.mean()), "max_dd": float((eq.cummax() - eq).max())}
 
 
-def rate(sigs: pd.DataFrame, df: pd.DataFrame, max_hold: int, min_test: int = 15) -> dict:
+def rate(sigs: pd.DataFrame, df: pd.DataFrame, max_hold: int, min_test: int = 40) -> dict:
     """Judge a strategy on data it was NOT tuned on: the first 70% is the trial, the last 30% is the exam. Both must pass."""
     trades = simulate(df, sigs, max_hold) if len(sigs) else pd.DataFrame(columns=["r", "outcome"])
     allst = stats(trades["r"])
@@ -59,7 +59,8 @@ def rate(sigs: pd.DataFrame, df: pd.DataFrame, max_hold: int, min_test: int = 15
         return {**allst, "train_pf": 0.0, "test_pf": 0.0, "test_n": 0, "ok": False, "grade": None}
     cut = df.index[int(len(df) * 0.7)]
     tr, te = stats(trades.loc[trades.index < cut, "r"]), stats(trades.loc[trades.index >= cut, "r"])
-    ok = te["n"] >= min_test and tr["pf"] >= 1.1 and te["pf"] >= 1.15 and te["expectancy"] > 0
+    # stricter: a bigger exam sample, a higher bar on both halves, and the whole history must also be profitable
+    ok = te["n"] >= min_test and tr["pf"] >= 1.2 and te["pf"] >= 1.3 and allst["pf"] >= 1.2 and te["expectancy"] > 0
     # grade A = passed a stricter exam (Premium), B = passed the basic exam, None = not approved
     grade = ("A" if te["pf"] >= 1.5 and te["n"] >= 25 and tr["pf"] >= 1.3 else "B") if ok else None
     return {**allst, "train_pf": tr["pf"], "test_pf": te["pf"], "test_n": te["n"], "ok": bool(ok), "grade": grade}

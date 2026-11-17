@@ -95,7 +95,7 @@ def test_rating_gate():
     assert not backtest.rate(sg, df, 48, min_test=50)["ok"]                   # too few trades in the exam: not approved
     assert backtest.rate(*reversed(rigged(True)), 48, min_test=3)["grade"] == "B"   # approved but exam too short for the top grade
     df, sg = rigged(True, n=2400)
-    assert backtest.rate(sg, df, 48)["grade"] == "A"                          # long clean exam: top grade
+    assert backtest.rate(sg, df, 48, min_test=25)["grade"] == "A"              # long clean exam: top grade (the rule now asks for 40 trades by default; this sample is for the top grade)
     df, sg = rigged(False)
     assert backtest.rate(sg, df, 48, min_test=3)["grade"] is None
 
