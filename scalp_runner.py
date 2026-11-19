@@ -57,6 +57,8 @@ def run(feed, members, post=scalp_post.post_plans, market=sc.market_open, sleep=
         if not members():
             return "nobody has scalp on"
         rows = s.snapshot(t, Rules())
+        ready = [x['symbol'] + ' ' + str(x.get('trend')) for x in rows]
+        log.info('scalp check %s: %s', t.strftime('%H:%M:%S'), ', '.join(ready) or 'no pairs')
         post(rows, t)
         loops += 1
         sleep(interval)

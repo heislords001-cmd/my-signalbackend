@@ -16,7 +16,9 @@ def post_plans(rows: list[dict], now: datetime) -> None:
     url = (os.environ.get("SITE_URL") or "").rstrip("/")
     secret = (os.environ.get("WEBHOOK_SECRET") or "").strip()
     if not url or not secret:
-        return                      # scalping stays off until SITE_URL and WEBHOOK_SECRET are set
+        # say so in the log, so a missing secret never looks like "nothing happened"
+        log.warning("scalp plans NOT sent: SITE_URL or WEBHOOK_SECRET is missing in the GitHub secrets")
+        return
     for row in rows:
         p = scalp_plan.plan(row, now_ms=now.timestamp() * 1000)
         if not p.get("ok"):
@@ -24,6 +26,6 @@ def post_plans(rows: list[dict], now: datetime) -> None:
         try:
             r = requests.post(f"{url}/api/scalp-order", headers={"Authorization": f"Bearer {secret}"},
                               json={k: p[k] for k in ("symbol", "side", "entry", "sl", "tp1", "updated_at")}, timeout=60)
-            log.info("scalp %s %s: site answered %s", p["symbol"], p["side"], r.status_code)
+            log.info("scalp %s %s: site answered %s %s", p["symbol"], p["side"], r.status_code, str(getattr(r, "text", ""))[:300])
         except requests.RequestException as e:
             log.warning("scalp %s not sent: %s", p["symbol"], e)
