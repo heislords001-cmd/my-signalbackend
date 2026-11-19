@@ -1,0 +1,29 @@
+# The scalp run. Started by the Start bot button on the site, stopped by Stop bot.
+# It places no trades itself: it sends each plan to the site, which places the orders for members who have scalp on.
+name: scalp
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: scalp
+  cancel-in-progress: false
+
+jobs:
+  scalp:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python scalp_runner.py
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          SITE_URL: ${{ secrets.SITE_URL }}
+          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
+          FEED: yahoo
