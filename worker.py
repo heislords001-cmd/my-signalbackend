@@ -163,6 +163,7 @@ def cycle(store, sc: Scanner, now: datetime, unapproved: bool, state: dict, once
         rows = sc.snapshot(now, r)
         if rows:
             store.save_market(rows)
+            post_scalp_plans(rows, now)
     # monitor live signals: check validity, alert on WIN or INVALIDATED
     if hasattr(store, "load_live_signals") and rows:
         try:
@@ -276,3 +277,25 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+def post_scalp_plans(rows: list[dict], now) -> None:
+    """Decide each pair's scalp here on the GitHub run, then send only the plans to the site, which places the orders.
+    The site checks every plan again before placing anything. Keys never leave the site."""
+    import os
+    import requests
+    import scalp_plan as SP
+    url = (os.environ.get("SITE_URL") or "").rstrip("/")
+    secret = (os.environ.get("WEBHOOK_SECRET") or "").strip()
+    if not url or not secret:
+        return                      # scalping is off until SITE_URL and WEBHOOK_SECRET are set
+    for row in rows:
+        p = SP.plan(row, now_ms=now.timestamp() * 1000)
+        if not p.get("ok"):
+            continue
+        try:
+            r = requests.post(f"{url}/api/scalp-order", headers={"Authorization": f"Bearer {secret}"},
+                              json={k: p[k] for k in ("symbol", "side", "entry", "sl", "tp1", "updated_at")}, timeout=60)
+            log.info("scalp %s %s: site answered %s", p["symbol"], p["side"], r.status_code)
+        except requests.RequestException as e:
+            log.warning("scalp %s not sent: %s", p["symbol"], e)
