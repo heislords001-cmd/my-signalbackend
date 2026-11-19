@@ -27,7 +27,19 @@ def members_on(url: str, key: str) -> set[str]:
     return {r["user_id"] for r in bots} & {r["user_id"] for r in scal}
 
 
-def run(feed, members, post=scalp_post.post_plans, market=sc.market_open, sleep=time.sleep,
+def scanner_on(url: str, key: str) -> bool:
+    """The bot works only while the scanner is on: running, and checked in within the last 3 minutes."""
+    h = {"apikey": key, "Authorization": f"Bearer {key}"}
+    rows = requests.get(f"{url}/rest/v1/scanner_state?id=eq.1&select=running,heartbeat", headers=h, timeout=20).json()
+    if not rows or not rows[0].get("running") or not rows[0].get("heartbeat"):
+        return False
+    beat = datetime.fromisoformat(str(rows[0]["heartbeat"]).replace("Z", "+00:00"))
+    if beat.tzinfo is None:
+        beat = beat.replace(tzinfo=timezone.utc)
+    return (datetime.now(timezone.utc) - beat).total_seconds() < 180
+
+
+def run(feed, members, post=scalp_post.post_plans, market=sc.market_open, sleep=time.sleep, scanner=lambda: True,
         now=lambda: datetime.now(timezone.utc), interval: float = 60, max_loops: int | None = None) -> str:
     s = sc.Scanner(feed)
     loops = 0
@@ -40,6 +52,8 @@ def run(feed, members, post=scalp_post.post_plans, market=sc.market_open, sleep=
         t = now()
         if not market(t):
             return "market closed"
+        if not scanner():
+            return "scanner is off"
         if not members():
             return "nobody has scalp on"
         rows = s.snapshot(t, Rules())
@@ -53,4 +67,4 @@ if __name__ == "__main__":
     from worker import make_feed
     url = (os.environ.get("SUPABASE_URL") or "").rstrip("/")
     key = os.environ.get("SUPABASE_SERVICE_KEY") or ""
-    print("scalp run:", run(make_feed(), members=lambda: members_on(url, key)))
+    print("scalp run:", run(make_feed(), members=lambda: members_on(url, key), scanner=lambda: scanner_on(url, key)))

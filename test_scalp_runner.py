@@ -37,4 +37,10 @@ r = scalp_runner.run(T.FakeFeed(), members=members, post=lambda rows, t: posts2.
                      sleep=lambda s: None, now=lambda: NOW, max_loops=10)
 assert r == "nobody has scalp on" and len(posts2) == 2
 print("ok switched off mid-run: it stops at the next check")
+# 5. the scanner is off: the bot does nothing, even with members on
+posts3 = []
+r = scalp_runner.run(T.FakeFeed(), members=lambda: {"a"}, post=lambda rows, t: posts3.append(1), market=lambda t: True,
+                     scanner=lambda: False, sleep=lambda s: None, now=lambda: NOW, max_loops=5)
+assert r == "scanner is off" and posts3 == []
+print("ok scanner off: the bot does nothing")
 print("\nscalp run checks passed")
