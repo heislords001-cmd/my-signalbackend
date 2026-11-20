@@ -16,6 +16,7 @@ import requests
 import scanner_core as sc
 from config import Rules
 import scalp_post
+import scalp_plan
 
 log = logging.getLogger("scalp")
 
@@ -39,11 +40,14 @@ def scanner_on(url: str, key: str) -> bool:
     return (datetime.now(timezone.utc) - beat).total_seconds() < 180
 
 
-def run(feed, members, post=scalp_post.post_plans, market=sc.market_open, sleep=time.sleep, scanner=lambda: True,
-        now=lambda: datetime.now(timezone.utc), interval: float = 60, max_loops: int | None = None) -> str:
+def run(feed, members, post=scalp_post.post_monitor, market=sc.market_open, sleep=time.sleep, scanner=lambda: True,
+        now=lambda: datetime.now(timezone.utc), interval: float = 15, refresh_every: int = 4, max_loops: int | None = None) -> str:
+    """Every `interval` seconds: check the bot is allowed to run, then send the latest plans to the monitor.
+    The market is read again every `refresh_every` checks (about once a minute)."""
     s = sc.Scanner(feed)
     loops = 0
     started = time.time()
+    plans: dict = {}
     while True:
         if max_loops is not None and loops >= max_loops:
             return "loop limit"
@@ -56,13 +60,17 @@ def run(feed, members, post=scalp_post.post_plans, market=sc.market_open, sleep=
             return "scanner is off"
         if not members():
             return "nobody has scalp on"
-        rows = s.snapshot(t, Rules())
-        ready = [x['symbol'] + ' ' + str(x.get('trend')) for x in rows]
-        log.info('scalp check %s: %s', t.strftime('%H:%M:%S'), ', '.join(ready) or 'no pairs')
-        post(rows, t)
+        if loops % refresh_every == 0:
+            rows = s.snapshot(t, Rules())
+            plans = {}
+            for row in rows:
+                p = scalp_plan.plan(row, now_ms=t.timestamp() * 1000)
+                plans[row["symbol"]] = ({"side": p["side"], "entry": p["entry"], "sl": p["sl"], "tp1": p["tp1"],
+                                         "updated_at": p["updated_at"], "symbol": row["symbol"]} if p.get("ok") else None)
+            log.info("scalp read %s: %s", t.strftime("%H:%M:%S"), ", ".join(f"{k} {v['side'] if v else 'none'}" for k, v in plans.items()) or "no pairs")
+        post(plans)
         loops += 1
         sleep(interval)
-
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
